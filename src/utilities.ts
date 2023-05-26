@@ -1,15 +1,29 @@
-type ByteOrder = "big" | "little";
-type ByteArray = number[];
+import { ByteArray, ByteOrder, IPInteger, IPv4LENGTH } from "./constants";
 
+import { AddressTypeError } from "./errors";
+
+/**
+ * Check whether a given number or big integer is within the safe integer range.
+ * @param {number | bigint} n The number to check if it is within a safe integer range.
+ * @returns {boolean} True if `n` is between `Number.MIN_SAFE_INTEGER` and
+ * `Number.MAX_SAFE_INTEGER`, `false` otherwise.
+ */
 export function isSafeNumber(n: number | bigint): boolean {
   return Number.MIN_SAFE_INTEGER <= n && n <= Number.MAX_SAFE_INTEGER;
 }
 
+/**
+ * Convert a byte, represented as a number or big integer, to a number.
+ * Bytes are 8 bits, so the maximum value is within the safe range.
+ * @param {number | bigint} byte The byte to convert to a number.
+ * @returns {number} The byte value as a number.
+ * @throws {TypeError} Thrown when the value is not a safe number.
+ */
 export function convertByteToNumber(byte: number | bigint): number {
   if (isSafeNumber(byte)) {
     return Number(byte);
   } else {
-    throw new Error(
+    throw new TypeError(
       "Bytes are 8 bits. 8 bit unsigned integers have a value range of 0-255"
     );
   }
@@ -101,3 +115,61 @@ export function intFromBytes(
   }
   return n;
 }
+
+/**
+ * Represent an address as 4 packed bytes in network (big-endian) order.
+ * @param {number | bigint} address An integer representation of an IPv4 address.
+ * @throws {TypeError} when `address` is larger than the maximum IPv4 address
+ * or negative.
+ * @returns {ByteArray} The packed byte array.
+ */
+export function v4IntToPacked(address: IPInteger): ByteArray {
+  const lowestAddr = 0;
+  const highestAddr = 2 ** IPv4LENGTH - 1;
+
+  if (highestAddr < address) {
+    throw new TypeError("Address too large for IPv4");
+  }
+  if (address < lowestAddr) {
+    throw new TypeError("Address is negative");
+  }
+
+  return intToBytes(address, 4, "big");
+}
+
+/**
+ * Represent an address as 16 packed bytes in network (big-endian) order.
+ * @param {number | bigint} address An integer representation of an IPv6 address.
+ * @throws {TypeError} when `address` is larger than the maximum IPv6 address
+ * or negative.
+ * @returns {ByteArray} The integer address packed as 16 bytes in network (big-endian)
+ * order.
+ */
+export function v6IntToPacked(address: IPInteger): ByteArray {
+  const lowestAddr = 0;
+  // if we don't use big ints here, this will overflow
+  const highestAddr = BigInt(2) ** BigInt(128) - BigInt(1);
+  if (highestAddr < address) {
+    throw new TypeError("Address too large for IPv6");
+  }
+  if (address < lowestAddr) {
+    throw new TypeError("Address is negative");
+  }
+
+  return intToBytes(address, 16, "big");
+}
+
+/**
+ * Helper to split the netmask and raise AddressTypeError if needed.
+ * @param {string} address The address string.
+ * @returns {[string, string]} The tuple of the address and mask.
+ */
+export function _splitOptionalNetmask(address: string): [string, string] {
+  const addr = address.split("/");
+  if (addr.length !== 2) {
+    throw new AddressTypeError(`Only one '/' permitted in ${address}`);
+  }
+  return [addr[0], addr[1]];
+}
+
+// TODO: _find_address_range
