@@ -93,7 +93,7 @@ tags
 # Persistent undo
 [._]*.un~
 
-## Project
+## Tools
 ### Yarn - https://yarnpkg.com/getting-started/qa#which-files-should-be-gitignored
 .pnp.*
 .yarn/*
@@ -102,3 +102,6 @@ tags
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+
+## Project
+node_modules

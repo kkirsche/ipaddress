@@ -1,0 +1,20 @@
+{
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", ".yarn"],
+  "compilerOptions": {
+    /* Visit https://aka.ms/tsconfig to read more about this file */
+    "allowJs": false,
+    "allowSyntheticDefaultImports": false,
+    "declaration": true,
+    "declarationMap": true,
+    "esModuleInterop": true /* Emit additional JavaScript to ease support for importing CommonJS modules. This enables 'allowSyntheticDefaultImports' for type compatibility. */,
+    "forceConsistentCasingInFileNames": true /* Ensure that casing is correct in imports. */,
+    "module": "commonjs",
+    "noFallthroughCasesInSwitch": false,
+    "outDir": "./build",
+    "resolveJsonModule": false,
+    "skipLibCheck": true /* Skip type checking all .d.ts files. */,
+    "strict": true /* Enable all strict type-checking options. */,
+    "target": "es2016"
+  }
+}
