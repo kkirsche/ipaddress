@@ -10,6 +10,19 @@ import { intFromBytes, strIsAscii, strIsDigit } from "./utilities";
 import { AddressTypeError } from "./errors";
 
 /**
+ * A fast, lightweight IPv4/IPv6 manipulation library in TypeScript.
+ *
+ * This library is used to create/poke/manipulate IPv4 and IPv6 addresses
+ * and networks.
+ */
+
+interface ComparableAddress {
+  version: IPAddressBaseT["version"];
+  _ip: BaseAddressT["_ip"];
+  toString: () => string;
+}
+
+/**
  * The base of all IP addresses.
  * All IP addresses and networks should support these features.
  */
@@ -41,8 +54,8 @@ interface IPAddressBaseT {
 interface BaseAddressT extends IPAddressBaseT {
   _ip: IPInteger;
   readonly toNumber: () => IPInteger;
-  readonly equals: (other: object) => boolean;
-  readonly lessThan: (other: object) => boolean;
+  readonly equals: (other: ComparableAddress) => boolean;
+  readonly lessThan: (other: ComparableAddress) => boolean;
   // Shorthand for integer addition and subtraction. This is not
   // meant to ever support addition / subtraction of addresses.
   readonly add: (other: IPInteger) => IPInteger;
@@ -125,6 +138,18 @@ export class IPv4Address implements BaseAddressT, BaseV4T, IPv4AddressT {
   readonly _ALL_ONES = IPv4ALLONES;
   _ip: number;
 
+  /**
+   * Represent and manipulate single IPv4 Addresses.
+   *
+   * @param address: A string or integer representing the IP.
+   * Additionally, an integer can be passed, so
+   * IPv4Address('192.0.2.1') == IPv4Address(3221225985).
+   * or, more generally
+   * IPv4Address(IPv4Address('192.0.2.1').toNumber()) ==
+   * IPv4Address('192.0.2.1')
+   * @throws {AddressValueError} If ipaddress isn't a valid IPv4 address.
+   * @returns {IPv4Address} The IPv4Address instance
+   */
   constructor(address: string | IPv4Integer | ByteArray) {
     if (typeof address === "number") {
       this._checkIntAddress(address);
@@ -283,23 +308,36 @@ export class IPv4Address implements BaseAddressT, BaseV4T, IPv4AddressT {
     return `${reversed.join(".")}.in-addr.arpa`;
   }
 
-  equals(this: IPv4Address, other: unknown): boolean {
-    if (other instanceof IPv4Address) {
-      return this.version === other.version && this._ip === other._ip;
-    }
-    return false;
+  /**
+   * Is this IP address equal to another IP address? This only supports IPv4Address types
+   * @param this The instance being compared against.
+   * @param other The other IP address being compared.
+   * @returns {boolean} true if the IP addresses are the same version
+   * and numeric representation, false otherwise.
+   */
+  equals(this: IPv4Address, other: ComparableAddress): boolean {
+    return this.version === other.version && this._ip === other._ip;
   }
 
-  lessThan(this: IPv4Address, other: object): boolean {
-    if (other instanceof IPv4Address) {
-      this._ip < other._ip;
+  /**
+   * Is this IP address less than another IP address?
+   * @param this The instance being compared against.
+   * @param other The other IP address being compared.
+   * @returns {boolean} true if this is less than other.
+   * @throws {TypeError} When the other object is not the same version.
+   */
+  lessThan(this: IPv4Address, other: ComparableAddress): boolean {
+    if (this.version !== other.version) {
+      throw new TypeError(
+        `${this.toString()} and ${other.toString()} are not of the same version`
+      );
     }
-    return false;
+    return this._ip < other._ip;
   }
 
-  // Shorthand for integer addition and subtraction. This is not
-  // meant to ever support addition / subtraction of addresses.
   add(this: IPv4Address, other: number | bigint): number | bigint {
+    // Shorthand for integer addition and subtraction. This is not
+    // meant to ever support addition / subtraction of addresses.
     switch (typeof other) {
       case "number":
         return this.toNumber() + other;
@@ -311,6 +349,8 @@ export class IPv4Address implements BaseAddressT, BaseV4T, IPv4AddressT {
   }
 
   sub(this: IPv4Address, other: number | bigint): number | bigint {
+    // Shorthand for integer addition and subtraction. This is not
+    // meant to ever support addition / subtraction of addresses.
     switch (typeof other) {
       case "number":
         return this.toNumber() - other;
