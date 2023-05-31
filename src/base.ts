@@ -5,7 +5,12 @@ import {
   IPv4Integer,
   IPv4LENGTH,
 } from "./constants";
-import { intFromBytes, strIsAscii, strIsDigit } from "./utilities";
+import {
+  intFromBytes,
+  isSafeNumber,
+  strIsAscii,
+  strIsDigit,
+} from "./utilities";
 
 import { AddressTypeError } from "./errors";
 
@@ -135,7 +140,7 @@ export type Netmask = Record<string, never>;
 export class IPv4Address implements BaseAddressT, BaseV4T, IPv4AddressT {
   readonly version = 4;
   readonly maxPrefixlen = IPv4LENGTH;
-  readonly _ALL_ONES = IPv4ALLONES;
+  static readonly _ALL_ONES = IPv4ALLONES;
   _ip: number;
 
   /**
@@ -178,6 +183,26 @@ export class IPv4Address implements BaseAddressT, BaseV4T, IPv4AddressT {
     }
 
     this._ip = this._ipIntFromString(address);
+  }
+
+  // @ts-expect-error Temporary error while the remaining interface is implemented.
+  _getAddressKey(this: IPv4Address): [number, IPv4Address] {
+    return [this._ip, this];
+  }
+
+  /**
+   * Turn the prefix length into a bitwise netmask.
+   * @param prefixlen An integer, the prefix length.
+   * @returns {IPInteger} An integer
+   */
+  _ipIntFromPrefix(prefixlen: number): IPInteger {
+    const result =
+      BigInt(IPv4Address._ALL_ONES) ^
+      (BigInt(IPv4Address._ALL_ONES) >> BigInt(prefixlen));
+    if (isSafeNumber(result)) {
+      return Number(result);
+    }
+    return result;
   }
 
   /**
@@ -263,7 +288,7 @@ export class IPv4Address implements BaseAddressT, BaseV4T, IPv4AddressT {
       const msg = `${address} (< 0) is not permitted as an IPv${this.version} address`;
       throw new AddressTypeError(msg);
     }
-    if (address > this._ALL_ONES) {
+    if (address > IPv4Address._ALL_ONES) {
       const msg = `${address} (> 2**${this.maxPrefixlen}) is not permitted as an IPv${this.version} address`;
       throw new AddressTypeError(msg);
     }
