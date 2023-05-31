@@ -173,3 +173,27 @@ export function _splitOptionalNetmask(address: string): [string, string] {
 }
 
 // TODO: _find_address_range
+
+export function strIsAscii(c: string): boolean {
+  // from byte 0 to byte 127 is ascii, so we validate that we're only in that range.
+  for (let idx = 0; idx < c.length; idx++) {
+    const codepoint = c.codePointAt(idx);
+    if (codepoint === undefined || !(0 <= codepoint && codepoint <= 127)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+export function strIsDigit(c: string): boolean {
+  // digits are ASCII bytes 48 through 57
+  // 48 is 0
+  // 57 is 9
+  for (let idx = 0; idx < c.length; idx++) {
+    const codepoint = c.codePointAt(idx);
+    if (codepoint === undefined || !(48 <= codepoint && codepoint <= 57)) {
+      return false;
+    }
+  }
+  return true;
+}
