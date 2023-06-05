@@ -197,3 +197,23 @@ export function strIsDigit(c: string): boolean {
   }
   return true;
 }
+
+/**
+ * Count the number of zero bits on the right hand side.
+ * @param number An integer.
+ * @param bits maximum number of bits to count.
+ * @returns {number} The number of zero bits on the right hand side of the number.
+ */
+export function _countRighthandZeroBits(
+  number: IPInteger,
+  bits: number
+): number {
+  if (number === 0) {
+    return bits;
+  }
+  const bigintNumber = BigInt(number);
+  const calculated = (~bigintNumber & (bigintNumber - BigInt(1))).toString(
+    2
+  ).length;
+  return Math.min(bits, calculated);
+}

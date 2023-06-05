@@ -10,7 +10,11 @@ describe("IPv4Address", () => {
     const ip = new IPv4Address(addr);
     expect(ip.toNumber()).toStrictEqual(3232235521);
     expect(ip.toString()).toStrictEqual("192.168.0.1");
+    expect(ip.toRepresentation()).toStrictEqual("'192.168.0.1'");
     expect(ip.packed()).toStrictEqual([192, 168, 0, 1]);
+    expect(ip.reversePointer()).toStrictEqual("1.0.168.192.in-addr.arpa");
+    expect(ip.compressed()).toStrictEqual("192.168.0.1");
+    expect(ip.exploded()).toStrictEqual("192.168.0.1");
   });
   it("throws if a non-byte type array is received", () => {
     expect(() => {
