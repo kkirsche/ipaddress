@@ -1,3 +1,4 @@
+import { AddressTypeError, NetmaskTypeError } from "./errors";
 import {
   ByteArray,
   IPInteger,
@@ -7,12 +8,12 @@ import {
 } from "./constants";
 import {
   intFromBytes,
+  intToBytes,
   isSafeNumber,
   strIsAscii,
   strIsDigit,
+  v4IntToPacked,
 } from "./utilities";
-
-import { AddressTypeError } from "./errors";
 
 /**
  * A fast, lightweight IPv4/IPv6 manipulation library in TypeScript.
@@ -116,7 +117,7 @@ export interface BaseV4T {
   readonly version: 4;
   readonly maxPrefixlen: typeof IPv4LENGTH;
   readonly _ALL_ONES: typeof IPv4ALLONES;
-  _netmaskCache: Record<string | number, BaseAddressT>;
+  _netmaskCache: Record<string | number, Netmask>;
   _explodeShorthandIpString: () => string;
   _makeNetmask: (arg: string | number) => Netmask;
   _ipIntFromString: (ip_str: string) => number;
@@ -135,12 +136,16 @@ interface IPv4AddressT {
   isLinkLocal: () => boolean;
 }
 
-export type Netmask = Record<string, never>;
+export type Netmask = {
+  netmask: IPv4Address;
+  prefixlen: number;
+};
 
 export class IPv4Address implements BaseAddressT, BaseV4T, IPv4AddressT {
   readonly version = 4;
   readonly maxPrefixlen = IPv4LENGTH;
-  static readonly _ALL_ONES = IPv4ALLONES;
+  readonly _ALL_ONES = IPv4ALLONES;
+  _netmaskCache: Record<string | number, Netmask> = {};
   _ip: number;
 
   /**
@@ -155,7 +160,16 @@ export class IPv4Address implements BaseAddressT, BaseV4T, IPv4AddressT {
    * @throws {AddressValueError} If ipaddress isn't a valid IPv4 address.
    * @returns {IPv4Address} The IPv4Address instance
    */
-  constructor(address: string | IPv4Integer | ByteArray) {
+  constructor(address: string | IPv4Integer | bigint | ByteArray) {
+    if (typeof address === "bigint") {
+      if (!isSafeNumber(address)) {
+        throw new AddressTypeError(
+          `Invalid IPv4 address big integer: ${address} is not convertable to a number`
+        );
+      }
+      address = Number(address);
+    }
+
     if (typeof address === "number") {
       this._checkIntAddress(address);
       this._ip = address;
@@ -185,9 +199,138 @@ export class IPv4Address implements BaseAddressT, BaseV4T, IPv4AddressT {
     this._ip = this._ipIntFromString(address);
   }
 
+  isPrivate(): boolean {
+    // TODO: Add
+    throw Error("Not Implemented Yet");
+  }
+
+  isReserved(): boolean {
+    // TODO: Add
+    throw Error("Not Implemented Yet");
+  }
+
+  isMulticast(): boolean {
+    // TODO: Add
+    throw Error("Not Implemented Yet");
+  }
+
+  isUnspecified(): boolean {
+    // TODO: Add
+    throw Error("Not Implemented Yet");
+  }
+
+  isGlobal(): boolean {
+    // TODO: Add
+    throw Error("Not Implemented Yet");
+  }
+
+  isLoopback(): boolean {
+    // TODO: Add
+    throw Error("Not Implemented Yet");
+  }
+
+  isLinkLocal(): boolean {
+    // TODO: Add
+    throw Error("Not Implemented Yet");
+  }
+
   // @ts-expect-error Temporary error while the remaining interface is implemented.
   _getAddressKey(this: IPv4Address): [number, IPv4Address] {
     return [this._ip, this];
+  }
+
+  _explodeShorthandIpString(this: IPv4Address): string {
+    return this.toString();
+  }
+
+  /**
+   * Binary representation of this address.
+   */
+  packed(this: IPv4Address): ByteArray {
+    return v4IntToPacked(this._ip);
+  }
+
+  /**
+   * Turns a 32-bit integer into dotted decimal notation.
+   * @param ip_int An integer, the IP address.
+   * @returns {string} The IP address in dotted decimal notation.
+   */
+  _stringFromIpInt(this: IPv4Address, ip_int: IPInteger): string {
+    return intToBytes(ip_int)
+      .map((byte) => byte.toString())
+      .join(".");
+  }
+
+  /**
+   * Return prefix length from a numeric string.
+   */
+  _prefixFromPrefixString(prefixlenStr: string): number {
+    // parseInt allows leading +/- as well as surrounding whitespace,
+    // so we ensure that isn't the case
+    if (!(strIsAscii(prefixlenStr) && strIsDigit(prefixlenStr))) {
+      throw new NetmaskTypeError(`${prefixlenStr} is not a valid netmask`);
+    }
+
+    const prefixlen = parseInt(prefixlenStr);
+    if (!Number.isFinite(prefixlen)) {
+      throw new NetmaskTypeError(`${prefixlenStr} is not a valid netmask`);
+    }
+    if (!(0 <= prefixlen && prefixlen <= this.maxPrefixlen)) {
+      throw new NetmaskTypeError(`${prefixlenStr} is not a valid netmask`);
+    }
+
+    return prefixlen;
+  }
+
+  /**
+   * Turn a netmask/hostmask string into a prefix length.
+   * @param mask The netmask/hostmask to be converted
+   * @returns {number} An integer, the prefix length.
+   * @throws {AddressTypeError} If the mask cannot be converted to an integer.
+   */
+  _prefixFromIpString(mask: string): number {
+    try {
+      return this._ipIntFromString(mask);
+    } catch (err: unknown) {
+      throw new AddressTypeError(`${err} in '${mask}'`);
+    }
+  }
+
+  /**
+   * Make a (netmask, prefix_len) tuple from the given argument.
+   *
+   * Argument can be:
+   * - an integer (the prefix length)
+   * - a string representing the prefix length (e.g. "24")
+   * - a string representing the prefix netmask (e.g. "255.255.255.0")
+   * @param arg The argument.
+   * @returns {Netmask} The netmask and prefix length object.
+   */
+  _makeNetmask(arg: string | number): Netmask {
+    let prefixlen: number;
+    if (this._netmaskCache[arg] === undefined) {
+      if (typeof arg === "number") {
+        prefixlen = arg;
+        if (!(0 <= prefixlen && prefixlen <= this.maxPrefixlen)) {
+          throw new NetmaskTypeError(`${prefixlen} is not a valid netmask`);
+        }
+      } else {
+        try {
+          prefixlen = this._prefixFromPrefixString(arg);
+        } catch (err: unknown) {
+          // Check for a netmask or hostmask in dotted-quad form.
+          // This may raise NetmaskTypeError
+          prefixlen = this._prefixFromIpString(arg);
+        }
+      }
+      const netmask = new IPv4Address(this._ipIntFromPrefix(prefixlen));
+      const result = {
+        netmask,
+        prefixlen,
+      };
+      this._netmaskCache[arg] = result;
+    }
+    return this._netmaskCache[arg];
   }
 
   /**
@@ -195,10 +338,9 @@ export class IPv4Address implements BaseAddressT, BaseV4T, IPv4AddressT {
    * @param prefixlen An integer, the prefix length.
    * @returns {IPInteger} An integer
    */
-  _ipIntFromPrefix(prefixlen: number): IPInteger {
+  _ipIntFromPrefix(this: IPv4Address, prefixlen: number): IPInteger {
     const result =
-      BigInt(IPv4Address._ALL_ONES) ^
-      (BigInt(IPv4Address._ALL_ONES) >> BigInt(prefixlen));
+      BigInt(this._ALL_ONES) ^ (BigInt(this._ALL_ONES) >> BigInt(prefixlen));
     if (isSafeNumber(result)) {
       return Number(result);
     }
@@ -288,7 +430,7 @@ export class IPv4Address implements BaseAddressT, BaseV4T, IPv4AddressT {
       const msg = `${address} (< 0) is not permitted as an IPv${this.version} address`;
       throw new AddressTypeError(msg);
     }
-    if (address > IPv4Address._ALL_ONES) {
+    if (address > this._ALL_ONES) {
       const msg = `${address} (> 2**${this.maxPrefixlen}) is not permitted as an IPv${this.version} address`;
       throw new AddressTypeError(msg);
     }
