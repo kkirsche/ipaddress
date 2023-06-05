@@ -79,7 +79,6 @@ export interface BaseNetworkT extends IPAddressBaseT {
   _addressClass: IPAddressBaseT;
   _getNetworkKey: () => [number, BaseAddressT, BaseAddressT];
   _isSubnetOf: (a: BaseNetworkT, b: BaseNetworkT) => boolean;
-  _prefixlen: number;
   addressExclude: (other: BaseAddressT) => BaseNetworkT[];
   broadcastAddress: () => BaseAddressT;
   compareNetworks: (other: BaseNetworkT) => -1 | 0 | 1;
@@ -97,7 +96,6 @@ export interface BaseNetworkT extends IPAddressBaseT {
   map: Generator<BaseAddressT, BaseAddressT[], never>; // equivalent to python's __iter__
   numAddresses: () => number; // does this need to return a bigint?
   overlaps: (other: BaseNetworkT) => boolean;
-  prefixlen: () => number;
   subnets: (prefixlenDiff?: number, newPrefix?: number) => BaseNetworkT;
   supernet: (prefixlenDiff?: number, newPrefix?: number) => BaseNetworkT;
   withHostmask: () => string;
@@ -620,7 +618,55 @@ export class IPv4Network implements BaseV4T, BaseNetworkT {
   readonly version = 4;
   readonly maxPrefixlen = IPv4LENGTH;
   readonly _ALL_ONES = IPv4ALLONES;
+  networkAddress: IPv4Address;
+  netmask: IPv4Address;
+  prefixlen: number;
   _netmaskCache: Record<string | number, Netmask> = {};
+
+  /**
+   * Instantiate a new IPv4 network object.
+   * @param address A string or integer representing the IP [& network].
+   * '192.0.2.0/24'
+   * '192.0.2.0/255.255.255.0'
+   * '192.0.2.0/0.0.0.255'
+   * are all functionally the same in IPv4. Similarly,
+   * '192.0.2.1'
+   * '192.0.2.1/255.255.255.255'
+   * '192.0.2.1/32'
+   * are also functionally equivalent. That is to say, failing to
+   * provide a subnetmask will create an object with a mask of /32.
+   *
+   * If the mask (portion after the / in the argument) is given in
+   * dotted quad form, it is treated as a netmask if it starts with a
+   * non-zero field (e.g. /255.0.0.0 == /8) and as a hostmask if it
+   * starts with a zero field (e.g. 0.255.255.255 == /8), with the
+   * single exception of an all-zero mask which is treated as a
+   * netmask == /0. If no mask is given, a default of /32 is used.
+   *
+   * Additionally, an integer can be passed, so
+   * IPv4Network('192.0.2.1') == IPv4Network(3221225985)
+   * or, more generally
+   * IPv4Interface(int(IPv4Interface('192.0.2.1'))) ==
+   *    IPv4Interface('192.0.2.1')
+   * @param strict Strictly parse the network.
+   * @throws {AddressTypeError, NetmaskTypeError, TypeError}
+   */
+  constructor(address: string | number | number[], strict = true) {
+    const [addr, mask] = this._splitAddrPrefix(address);
+    this.networkAddress = new this._addressClass(addr);
+    const { netmask, prefixlen } = this._makeNetmask(mask);
+    this.netmask = netmask;
+    this.prefixlen = prefixlen;
+    const packed = BigInt(this.networkAddress.toNumber());
+    const netmaskNumber = BigInt(netmask.toNumber());
+    if ((packed & netmaskNumber) !== packed) {
+      if (strict) {
+        throw new TypeError(`'${address}' has host bits set`);
+      } else {
+        this.networkAddress = new IPv4Address(packed & netmaskNumber);
+      }
+    }
+  }
 
   _explodeShorthandIpString(this: IPv4Network): string {
     return this.toString();
@@ -831,5 +877,35 @@ export class IPv4Network implements BaseV4T, BaseNetworkT {
       throw new TypeError(msg);
     }
     return prefixlen;
+  }
+
+  /**
+   * Turns a 32-bit integer into dotted decimal notation.
+   * @param ip_int An integer, the IP address.
+   * @returns {string} The IP address in dotted decimal notation.
+   */
+  _stringFromIpInt(ip_int: IPInteger): string {
+    return intToBytes(ip_int, 4, "big")
+      .map((byte) => byte.toString())
+      .join(".");
+  }
+
+  _splitAddrPrefix(
+    address: string | IPInteger | ByteArray
+  ): [string | IPInteger | ByteArray, number] {
+    // a packed address or integer
+    if (
+      typeof address === "number" ||
+      typeof address === "bigint" ||
+      (Array.isArray(address) &&
+        address.every((potentialByte) => typeof potentialByte === "number"))
+    ) {
+      // hardcoded 32 to make it static
+      return [address, 32];
+    }
+
+    const addressArray =
+      typeof address === "string" ? _splitOptionalNetmask(address) : address;
+    return [addressArray[0], 32];
   }
 }
