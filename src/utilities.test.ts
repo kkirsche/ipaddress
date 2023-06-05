@@ -5,6 +5,8 @@ import {
   v6IntToPacked,
 } from "./utilities";
 
+import { isBigInt } from "./typeGuards";
+
 describe("integer methods", () => {
   describe("intToBytes", () => {
     it.each([
@@ -83,7 +85,7 @@ describe("integer methods", () => {
       ], // IPv6 - 2001:db00::0
     ])("converts byte array to digits", (bytes, expected) => {
       const result = intFromBytes(bytes, "big", false);
-      if (typeof result === "bigint") {
+      if (isBigInt(result)) {
         expect(result).toStrictEqual(BigInt(expected));
       } else {
         expect(result).toStrictEqual(expected);
@@ -97,7 +99,7 @@ describe("integer methods", () => {
   ])("converts the integer %d to a byte array and back safely", (n, length) => {
     const bytes = intToBytes(n, length, "big");
     const numberFromArray = intFromBytes(bytes, "big");
-    if (typeof numberFromArray === "bigint") {
+    if (isBigInt(numberFromArray)) {
       expect(numberFromArray).toStrictEqual(BigInt(n));
     } else {
       expect(numberFromArray).toStrictEqual(n);

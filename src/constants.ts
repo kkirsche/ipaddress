@@ -1,3 +1,6 @@
+export type IPVersion = 4 | 6;
+export type Prefixlen = number;
+
 export const IPv4LENGTH = 32;
 export const IPv4ALLONES = 2 ** IPv4LENGTH - 1;
 export const IPv6LENGTH = 128;

@@ -1,7 +1,15 @@
 import { AddressTypeError, NetmaskTypeError } from "./errors";
 import { ByteArray, IPInteger, IPv4ALLONES, IPv4LENGTH } from "./constants";
 import {
-  _countRighthandZeroBits,
+  _baseCheckIntAddress,
+  _baseCheckPackedAddress,
+  _baseCompressed,
+  _baseExploded,
+  _basePrefixFromIpInt,
+  _baseReportInvalidNetmask,
+  _baseReversePointer,
+} from "./_IPAddressBase";
+import {
   _splitOptionalNetmask,
   intFromBytes,
   intToBytes,
@@ -10,28 +18,20 @@ import {
   strIsDigit,
   v4IntToPacked,
 } from "./utilities";
+import { isBigInt, isByteArray, isNumber, isString } from "./typeGuards";
 
-/**
- * A fast, lightweight IPv4/IPv6 manipulation library in TypeScript.
- *
- * This library is used to create/poke/manipulate IPv4 and IPv6 addresses
- * and networks.
- */
-
-interface ComparableAddress {
-  version: IPAddressBaseT["version"];
-  _ip: BaseAddressT["_ip"];
-  toString: () => string;
-}
+type IPVersion = 4 | 6;
+type Prefixlen = number;
 
 /**
  * The base of all IP addresses.
  * All IP addresses and networks should support these features.
  */
 interface IPAddressBaseT {
-  readonly version: 4 | 6;
-  readonly exploded: () => string;
-  readonly compressed: () => string;
+  readonly version: IPVersion;
+  readonly toString: () => string;
+  readonly exploded: string;
+  readonly compressed: string;
   readonly reversePointer: () => string;
   readonly _checkIntAddress: (address: IPInteger) => void; // throws if invalid
   readonly _checkPackedAddress: (
@@ -39,11 +39,11 @@ interface IPAddressBaseT {
     expectedLen: number
   ) => void; // throws if invalid
   // static
-  readonly _ipIntFromPrefix: (prefixlen: number) => IPInteger;
-  readonly _prefixFromIpInt: (ipInt: IPInteger) => number;
+  readonly _ipIntFromPrefix: (prefixlen: Prefixlen) => IPInteger;
+  readonly _prefixFromIpInt: (ipInt: IPInteger) => Prefixlen;
   readonly _reportInvalidNetmask: (netmaskStr: string) => void;
-  readonly _prefixFromPrefixString: (prefixlenStr: string) => number;
-  readonly _prefixFromIpString: (ipStr: string) => number;
+  readonly _prefixFromPrefixString: (prefixlenStr: string) => Prefixlen;
+  readonly _prefixFromIpString: (ipStr: string) => Prefixlen;
   readonly _splitAddrPrefix: (
     address: string | IPInteger | ByteArray
   ) => [string | IPInteger | ByteArray, number];
@@ -58,14 +58,13 @@ interface IPAddressBaseT {
 interface BaseAddressT extends IPAddressBaseT {
   _ip: IPInteger;
   readonly toNumber: () => IPInteger;
-  readonly equals: (other: ComparableAddress) => boolean;
-  readonly lessThan: (other: ComparableAddress) => boolean;
   // Shorthand for integer addition and subtraction. This is not
   // meant to ever support addition / subtraction of addresses.
   readonly add: (other: IPInteger) => IPInteger;
   readonly sub: (other: IPInteger) => IPInteger;
   readonly toRepresentation: () => string;
-  readonly toString: () => string;
+  readonly equals: (other: BaseAddressT) => boolean;
+  readonly lessThan: (other: BaseAddressT) => boolean;
   readonly _getAddressKey: () => [number, BaseAddressT];
 }
 
@@ -77,9 +76,12 @@ interface BaseAddressT extends IPAddressBaseT {
  */
 export interface BaseNetworkT extends IPAddressBaseT {
   _addressClass: IPAddressBaseT;
-  _getNetworkKey: () => [number, BaseAddressT, BaseAddressT];
-  _isSubnetOf: (a: BaseNetworkT, b: BaseNetworkT) => boolean;
-  addressExclude: (other: BaseAddressT) => BaseNetworkT[];
+  networkAddress: IPAddressBaseT;
+  netmask: IPv4Address;
+  readonly equals: (other: BaseAddressT) => boolean;
+  _getNetworksKey: () => [IPVersion, BaseAddressT, BaseAddressT];
+  subnetOf: (b: BaseNetworkT) => boolean;
+  addressExclude: (other: BaseNetworkT) => BaseNetworkT[];
   broadcastAddress: () => BaseAddressT;
   compareNetworks: (other: BaseNetworkT) => -1 | 0 | 1;
   contains: (other: BaseNetworkT) => boolean;
@@ -121,7 +123,9 @@ export interface BaseV4T {
   _stringFromIpInt: (ip_int: IPInteger) => string;
 }
 
-interface IPv4AddressT {
+interface IPv4AddressT extends BaseV4T, BaseAddressT {
+  readonly version: 4;
+  readonly _getAddressKey: () => [number, BaseAddressT];
   packed: () => ByteArray;
   isReserved: () => boolean;
   isPrivate: () => boolean;
@@ -132,12 +136,20 @@ interface IPv4AddressT {
   isLinkLocal: () => boolean;
 }
 
+interface IPv4NetworkT extends BaseV4T, BaseNetworkT {
+  readonly version: 4;
+  _addressClass: IPv4Address;
+  networkAddress: IPv4Address;
+  netmask: IPv4Address;
+  isGlobal: () => boolean;
+}
+
 export type Netmask = {
   netmask: IPv4Address;
   prefixlen: number;
 };
 
-export class IPv4Address implements BaseAddressT, BaseV4T, IPv4AddressT {
+export class IPv4Address implements IPv4AddressT, BaseV4T, BaseAddressT {
   readonly version = 4;
   readonly maxPrefixlen = IPv4LENGTH;
   readonly _ALL_ONES = IPv4ALLONES;
@@ -157,7 +169,7 @@ export class IPv4Address implements BaseAddressT, BaseV4T, IPv4AddressT {
    * @returns {IPv4Address} The IPv4Address instance
    */
   constructor(address: string | IPInteger | ByteArray) {
-    if (typeof address === "bigint") {
+    if (isBigInt(address)) {
       if (!isSafeNumber(address)) {
         throw new AddressTypeError(
           `Invalid IPv4 address big integer: ${address} is not convertable to a number`
@@ -166,7 +178,7 @@ export class IPv4Address implements BaseAddressT, BaseV4T, IPv4AddressT {
       address = Number(address);
     }
 
-    if (typeof address === "number") {
+    if (isNumber(address)) {
       this._checkIntAddress(address);
       this._ip = address;
       return;
@@ -177,7 +189,7 @@ export class IPv4Address implements BaseAddressT, BaseV4T, IPv4AddressT {
       if (address.every((value) => typeof value === "number")) {
         this._checkPackedAddress(address, 4);
         const ip = intFromBytes(address, "big");
-        if (typeof ip !== "number") {
+        if (!isNumber(ip)) {
           throw new AddressTypeError(
             `Invalid IPv4 address integer: ${ip} is of type ${typeof ip} instead of number`
           );
@@ -198,36 +210,43 @@ export class IPv4Address implements BaseAddressT, BaseV4T, IPv4AddressT {
 
   isPrivate(): boolean {
     // TODO: Add
+    // https://github.com/python/cpython/blob/main/Lib/ipaddress.py#L1335
     throw Error("Not Implemented Yet");
   }
 
   isReserved(): boolean {
     // TODO: Add
+    // https://github.com/python/cpython/blob/main/Lib/ipaddress.py#L1323
     throw Error("Not Implemented Yet");
   }
 
   isMulticast(): boolean {
     // TODO: Add
+    // https://github.com/python/cpython/blob/main/Lib/ipaddress.py#L1351
     throw Error("Not Implemented Yet");
   }
 
   isUnspecified(): boolean {
     // TODO: Add
+    // https://github.com/python/cpython/blob/main/Lib/ipaddress.py#L1362
     throw Error("Not Implemented Yet");
   }
 
   isGlobal(): boolean {
     // TODO: Add
+    // https://github.com/python/cpython/blob/main/Lib/ipaddress.py#L1347
     throw Error("Not Implemented Yet");
   }
 
   isLoopback(): boolean {
     // TODO: Add
+    // https://github.com/python/cpython/blob/main/Lib/ipaddress.py#L1373
     throw Error("Not Implemented Yet");
   }
 
   isLinkLocal(): boolean {
     // TODO: Add
+    // https://github.com/python/cpython/blob/main/Lib/ipaddress.py#L1383
     throw Error("Not Implemented Yet");
   }
 
@@ -238,17 +257,7 @@ export class IPv4Address implements BaseAddressT, BaseV4T, IPv4AddressT {
    * @throws {TypeError} If the input intermingles zeroes and ones.
    */
   _prefixFromIpInt(this: IPv4Address, ipInt: IPInteger): number {
-    const trailingZeroes = _countRighthandZeroBits(ipInt, this.maxPrefixlen);
-    const prefixlen = this.maxPrefixlen - trailingZeroes;
-    const leadingOnes = BigInt(ipInt) >> BigInt(trailingZeroes);
-    const allOnes = (BigInt(1) << BigInt(prefixlen)) - BigInt(1);
-    if (leadingOnes !== allOnes) {
-      const byteslen = Math.floor(this.maxPrefixlen / 8);
-      const details = intToBytes(ipInt, byteslen, "big");
-      const msg = `Netmask pattern '${details.toString()}' mixes zeroes & ones`;
-      throw new TypeError(msg);
-    }
-    return prefixlen;
+    return _basePrefixFromIpInt(this, ipInt);
   }
 
   _getAddressKey(this: IPv4Address): [number, IPv4Address] {
@@ -256,26 +265,21 @@ export class IPv4Address implements BaseAddressT, BaseV4T, IPv4AddressT {
   }
 
   _reportInvalidNetmask(netmaskStr: string): void {
-    const msg = `${netmaskStr} is not a valid netmask`;
-    throw new NetmaskTypeError(msg);
+    return _baseReportInvalidNetmask(netmaskStr);
   }
 
   _splitAddrPrefix(
     address: string | IPInteger | ByteArray
   ): [string | IPInteger | ByteArray, number] {
     // a packed address or integer
-    if (
-      typeof address === "number" ||
-      typeof address === "bigint" ||
-      (Array.isArray(address) &&
-        address.every((potentialByte) => typeof potentialByte === "number"))
-    ) {
+    if (isNumber(address) || isBigInt(address) || isByteArray(address)) {
       // hardcoded 32 to make it static
       return [address, 32];
     }
 
-    const addressArray =
-      typeof address === "string" ? _splitOptionalNetmask(address) : address;
+    const addressArray = isString(address)
+      ? _splitOptionalNetmask(address)
+      : address;
     return [addressArray[0], 32];
   }
 
@@ -374,7 +378,7 @@ export class IPv4Address implements BaseAddressT, BaseV4T, IPv4AddressT {
   _makeNetmask(this: IPv4Address, arg: string | number): Netmask {
     let prefixlen: number;
     if (this._netmaskCache[arg] === undefined) {
-      if (typeof arg === "number") {
+      if (isNumber(arg)) {
         prefixlen = arg;
         if (!(0 <= prefixlen && prefixlen <= this.maxPrefixlen)) {
           throw new NetmaskTypeError(`${prefixlen} is not a valid netmask`);
@@ -434,7 +438,7 @@ export class IPv4Address implements BaseAddressT, BaseV4T, IPv4AddressT {
         octets.map((octet) => this._parseOctet(octet)),
         "big" // big-endian / network-byte order
       );
-      if (typeof parsedOctets !== "number") {
+      if (!isNumber(parsedOctets)) {
         throw new AddressTypeError(
           `Invalid IPv4 address integer: ${parsedOctets} is of type ${typeof parsedOctets} instead of number`
         );
@@ -491,14 +495,7 @@ export class IPv4Address implements BaseAddressT, BaseV4T, IPv4AddressT {
    * value for an IPv4 address.
    */
   _checkIntAddress(this: IPv4Address, address: IPInteger): void {
-    if (address < 0) {
-      const msg = `${address} (< 0) is not permitted as an IPv${this.version} address`;
-      throw new AddressTypeError(msg);
-    }
-    if (address > this._ALL_ONES) {
-      const msg = `${address} (> 2**${this.maxPrefixlen}) is not permitted as an IPv${this.version} address`;
-      throw new AddressTypeError(msg);
-    }
+    return _baseCheckIntAddress(this, address);
   }
 
   /**
@@ -510,13 +507,9 @@ export class IPv4Address implements BaseAddressT, BaseV4T, IPv4AddressT {
   _checkPackedAddress(
     this: IPv4Address,
     address: ByteArray,
-    expected_len: number
+    expectedLen: number
   ): void {
-    const address_len = address.length;
-    if (address_len !== expected_len) {
-      const msg = `'${address}' (len ${address_len} != ${expected_len}) is not permitted as an IPv${this.version} address.`;
-      throw new AddressTypeError(msg);
-    }
+    return _baseCheckPackedAddress(this, address, expectedLen);
   }
 
   /**
@@ -535,17 +528,21 @@ export class IPv4Address implements BaseAddressT, BaseV4T, IPv4AddressT {
     return `'${this.toString()}'`;
   }
 
-  exploded(this: IPv4Address): string {
-    return this.toString();
+  get exploded(): string {
+    return _baseExploded(this);
   }
 
-  compressed(this: IPv4Address): string {
-    return this.toString();
+  get compressed(): string {
+    return _baseCompressed(this);
+  }
+
+  get _reversePointer(): string {
+    const reverseOctets = this.toString().split(".").reverse();
+    return `${reverseOctets.join(".")}.in-addr.arpa`;
   }
 
   reversePointer(this: IPv4Address): string {
-    const reversed = this.toString().split(".").reverse();
-    return `${reversed.join(".")}.in-addr.arpa`;
+    return _baseReversePointer(this);
   }
 
   /**
@@ -555,7 +552,7 @@ export class IPv4Address implements BaseAddressT, BaseV4T, IPv4AddressT {
    * @returns {boolean} true if the IP addresses are the same version
    * and numeric representation, false otherwise.
    */
-  equals(this: IPv4Address, other: ComparableAddress): boolean {
+  equals(this: IPv4Address, other: BaseAddressT): boolean {
     return this.version === other.version && this._ip === other._ip;
   }
 
@@ -566,7 +563,7 @@ export class IPv4Address implements BaseAddressT, BaseV4T, IPv4AddressT {
    * @returns {boolean} true if this is less than other.
    * @throws {TypeError} When the other object is not the same version.
    */
-  lessThan(this: IPv4Address, other: ComparableAddress): boolean {
+  lessThan(this: IPv4Address, other: BaseAddressT): boolean {
     if (this.version !== other.version) {
       throw new TypeError(
         `${this.toString()} and ${other.toString()} are not of the same version`
@@ -575,7 +572,7 @@ export class IPv4Address implements BaseAddressT, BaseV4T, IPv4AddressT {
     return this._ip < other._ip;
   }
 
-  add(this: IPv4Address, other: number | bigint): number | bigint {
+  add(this: IPv4Address, other: IPInteger): number | bigint {
     // Shorthand for integer addition and subtraction. This is not
     // meant to ever support addition / subtraction of addresses.
     switch (typeof other) {
@@ -588,7 +585,7 @@ export class IPv4Address implements BaseAddressT, BaseV4T, IPv4AddressT {
     }
   }
 
-  sub(this: IPv4Address, other: number | bigint): number | bigint {
+  sub(this: IPv4Address, other: IPInteger): IPInteger {
     // Shorthand for integer addition and subtraction. This is not
     // meant to ever support addition / subtraction of addresses.
     switch (typeof other) {
@@ -612,7 +609,7 @@ export class IPv4Address implements BaseAddressT, BaseV4T, IPv4AddressT {
  * .netmask: IPv4Address("255.255.255.224")
  * .prefixlen: 27
  */
-export class IPv4Network implements BaseV4T, BaseNetworkT {
+export class IPv4Network implements IPv4NetworkT, BaseV4T, BaseNetworkT {
   // @ts-expect-error Incorrect type inference
   _addressClass = IPv4Address;
   readonly version = 4;
@@ -685,7 +682,7 @@ export class IPv4Network implements BaseV4T, BaseNetworkT {
   _makeNetmask(this: IPv4Network, arg: string | number): Netmask {
     let prefixlen: number;
     if (this._netmaskCache[arg] === undefined) {
-      if (typeof arg === "number") {
+      if (isNumber(arg)) {
         prefixlen = arg;
         if (!(0 <= prefixlen && prefixlen <= this.maxPrefixlen)) {
           throw new NetmaskTypeError(`${prefixlen} is not a valid netmask`);
@@ -751,12 +748,7 @@ export class IPv4Network implements BaseV4T, BaseNetworkT {
    * @returns {IPInteger} An integer
    */
   _ipIntFromPrefix(this: IPv4Network, prefixlen: number): IPInteger {
-    const result =
-      BigInt(this._ALL_ONES) ^ (BigInt(this._ALL_ONES) >> BigInt(prefixlen));
-    if (isSafeNumber(result)) {
-      return Number(result);
-    }
-    return result;
+    return _ipIntFromPrefix(this, prefixlen);
   }
 
   /**
@@ -802,7 +794,7 @@ export class IPv4Network implements BaseV4T, BaseNetworkT {
         octets.map((octet) => this._parseOctet(octet)),
         "big" // big-endian / network-byte order
       );
-      if (typeof parsedOctets !== "number") {
+      if (!isNumber(parsedOctets)) {
         throw new AddressTypeError(
           `Invalid IPv4 address integer: ${parsedOctets} is of type ${typeof parsedOctets} instead of number`
         );
@@ -866,17 +858,7 @@ export class IPv4Network implements BaseV4T, BaseNetworkT {
    * @throws {TypeError} If the input intermingles zeroes and ones.
    */
   _prefixFromIpInt(this: IPv4Network, ipInt: IPInteger): number {
-    const trailingZeroes = _countRighthandZeroBits(ipInt, this.maxPrefixlen);
-    const prefixlen = this.maxPrefixlen - trailingZeroes;
-    const leadingOnes = BigInt(ipInt) >> BigInt(trailingZeroes);
-    const allOnes = (BigInt(1) << BigInt(prefixlen)) - BigInt(1);
-    if (leadingOnes !== allOnes) {
-      const byteslen = Math.floor(this.maxPrefixlen / 8);
-      const details = intToBytes(ipInt, byteslen, "big");
-      const msg = `Netmask pattern '${details.toString()}' mixes zeroes & ones`;
-      throw new TypeError(msg);
-    }
-    return prefixlen;
+    return _prefixFromIpInt(this, ipInt);
   }
 
   /**
@@ -894,18 +876,96 @@ export class IPv4Network implements BaseV4T, BaseNetworkT {
     address: string | IPInteger | ByteArray
   ): [string | IPInteger | ByteArray, number] {
     // a packed address or integer
-    if (
-      typeof address === "number" ||
-      typeof address === "bigint" ||
-      (Array.isArray(address) &&
-        address.every((potentialByte) => typeof potentialByte === "number"))
-    ) {
+    if (isNumber(address) || isBigInt(address) || isByteArray(address)) {
       // hardcoded 32 to make it static
       return [address, 32];
     }
 
-    const addressArray =
-      typeof address === "string" ? _splitOptionalNetmask(address) : address;
+    const addressArray = isString(address)
+      ? _splitOptionalNetmask(address)
+      : address;
     return [addressArray[0], 32];
+  }
+
+  isGlobal(): boolean {
+    // TODO: Add
+    // https://github.com/python/cpython/blob/main/Lib/ipaddress.py#L1529
+    throw Error("Not Implemented Yet");
+  }
+
+  hostmask(this: IPv4Network): IPv4Address {
+    return new this._addressClass(
+      BigInt(this.netmask.toNumber()) ^ BigInt(this._ALL_ONES)
+    );
+  }
+
+  broadcastAddress(this: IPv4Network): IPv4Address {
+    return new this._addressClass(
+      BigInt(this.networkAddress.toNumber()) |
+        BigInt(this.hostmask().toNumber())
+    );
+  }
+
+  withPrefixlen(this: IPv4Network): string {
+    return `${this.networkAddress.toString()}/${this.prefixlen}`;
+  }
+
+  withNetmask(this: IPv4Network): string {
+    return `${this.networkAddress.toString()}/${this.netmask.toString()}`;
+  }
+
+  withHostmask(this: IPv4Network): string {
+    return `${this.networkAddress.toString()}/${this.hostmask().toString()}`;
+  }
+
+  /**
+   * Number of hosts in the current subnet.
+   * @returns {number} The number of hosts in the subnet.
+   */
+  numAddresses(this: IPv4Network): number {
+    return (
+      this.broadcastAddress().toNumber() - this.networkAddress.toNumber() + 1
+    );
+  }
+
+  toString(this: IPv4Network): string {
+    return `${this.networkAddress.toString()}/${this.prefixlen}`;
+  }
+
+  subnetOf(this: IPv4Network, b: BaseNetworkT): boolean {
+    if (this.version !== b.version) {
+      throw new TypeError(
+        `${this.toString()} and ${b.toString()} are not of the same version`
+      );
+    }
+    if (b.networkAddress instanceof IPv4Address) {
+      return (
+        this.networkAddress.toNumber() <= b.networkAddress.toNumber() &&
+        b.broadcastAddress().toNumber() >= this.broadcastAddress().toNumber()
+      );
+    }
+    throw new TypeError(`${b.toString()} is not an IPv4Address instance`);
+  }
+
+  addressExclude(other: BaseNetworkT): BaseNetworkT[] {
+    if (this.version !== other.version) {
+      throw new TypeError(
+        `${this.toString()} and ${other.toString()} are not of the same version`
+      );
+    }
+
+    if (!(other instanceof IPv4Network)) {
+      throw new TypeError(`${other.toString()} is not a network object`);
+    }
+
+    if (!other.subnetOf(this)) {
+      throw new TypeError(
+        `${other.toString()} is not contained in ${this.toString()}`
+      );
+    }
+
+    if (other.equals(this)) {
+      return [this];
+    }
   }
 }

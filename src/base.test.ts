@@ -1,5 +1,6 @@
+import { IPv4Address, IPv4Network } from "./base";
+
 import { AddressTypeError } from "./errors";
-import { IPv4Address } from "./base";
 
 describe("IPv4Address", () => {
   it.each([
@@ -95,5 +96,14 @@ describe("IPv4Address", () => {
     expect(() => {
       new IPv4Address(addr);
     }).toThrowError(AddressTypeError);
+  });
+});
+
+describe("IPv4Network", () => {
+  it("parses an IPv4 CIDR address", () => {
+    const network = new IPv4Network("192.0.2.0/27");
+    expect(network.networkAddress.toString()).toStrictEqual("192.0.2.0");
+    expect(network.prefixlen).toStrictEqual(24);
+    expect(network.hostmask);
   });
 });
