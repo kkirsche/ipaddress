@@ -187,6 +187,7 @@ export class IPv4Address implements BaseAddressT, BaseV4T, IPv4AddressT {
           );
         }
         this._ip = ip;
+        return;
       }
       throw new TypeError("Packed IP addresses must be arrays of numbers");
     }
@@ -256,7 +257,7 @@ export class IPv4Address implements BaseAddressT, BaseV4T, IPv4AddressT {
    * @returns {string} The IP address in dotted decimal notation.
    */
   _stringFromIpInt(this: IPv4Address, ip_int: IPInteger): string {
-    return intToBytes(ip_int)
+    return intToBytes(ip_int, 4, "big")
       .map((byte) => byte.toString())
       .join(".");
   }
@@ -456,6 +457,10 @@ export class IPv4Address implements BaseAddressT, BaseV4T, IPv4AddressT {
    */
   toNumber(this: IPv4Address): number {
     return this._ip;
+  }
+
+  toString(): string {
+    return this._stringFromIpInt(this._ip);
   }
 
   toRepresentation(this: IPv4Address): string {
