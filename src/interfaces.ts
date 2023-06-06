@@ -1,4 +1,13 @@
-import { IPInteger } from "./constants";
+import {
+  IPInteger,
+  IPVersion,
+  IPv4LENGTH,
+  IPv6LENGTH,
+  NetmaskCacheKey,
+  NetmaskCacheValue,
+  Prefixlen,
+} from "./constants";
+
 import { _IPAddressBaseT } from "./_IPAddressBase";
 
 export interface Stringable {
@@ -13,7 +22,9 @@ export interface PrefixLengthable {
   maxPrefixlen: number;
 }
 
-export type HasVersion = Pick<_IPAddressBaseT, "version">;
+export interface HasVersion {
+  version: IPVersion;
+}
 
 export interface HasIP {
   _ip: IPInteger;
@@ -44,5 +55,17 @@ export interface Explodable {
 }
 
 export interface ReversePointerable {
-  _reversePointer: string;
+  _reversePointer: () => string;
+}
+
+export interface SupportsOctetParsing {
+  _parseOctet: (octetStr: string) => number;
+}
+
+export interface Netmaskable {
+  maxPrefixlen: typeof IPv4LENGTH | typeof IPv6LENGTH;
+  _netmaskCache: Record<NetmaskCacheKey, NetmaskCacheValue>;
+  _prefixFromPrefixString: (prefixlenStr: string) => Prefixlen;
+  _prefixFromIpString: (ipStr: string) => Prefixlen;
+  _ipIntFromPrefix: (prefixlen: Prefixlen) => IPInteger;
 }

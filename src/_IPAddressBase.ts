@@ -19,19 +19,11 @@ import {
   strIsDigit,
 } from "./utilities";
 import { isBigInt, isByteArray, isNumber, isString } from "./typeGuards";
-
 /**
  * The mother class
  */
 export interface _IPAddressBaseT {
-  // @property
-  exploded: string;
-  compressed: string;
-  reversePointer: string;
-  version: IPVersion;
-  // instance
-  _checkIntAddress: (address: IPInteger) => void; // throws if invalid
-  _checkPackedAddress: (address: ByteArray, expectedLen: number) => void;
+  new (): _IPAddressBaseTInstance;
   // class methods
   _ipIntFromPrefix: (prefixlen: Prefixlen) => IPInteger;
   _prefixFromIpInt: (ipInt: IPInteger) => Prefixlen;
@@ -42,6 +34,34 @@ export interface _IPAddressBaseT {
     address: string | IPInteger | ByteArray
   ) => [string | IPInteger | ByteArray, number];
 }
+
+export interface _IPAddressBaseTInstance {
+  // @property
+  exploded: string;
+  compressed: string;
+  reversePointer: string;
+  version: IPVersion;
+  // instance
+  _checkIntAddress: (address: IPInteger) => void; // throws if invalid
+  _checkPackedAddress: (address: ByteArray, expectedLen: number) => void;
+}
+
+export const _IPAddressBaseStruct = {
+  // @property
+  exploded: _baseExploded,
+  compressed: _baseCompressed,
+  reversePointer: _baseReversePointer,
+  // instance
+  _checkIntAddress: _baseCheckIntAddress, // throws if invalid
+  _checkPackedAddress: _baseCheckPackedAddress,
+  // class methods
+  _ipIntFromPrefix: _baseIpIntFromPrefix,
+  _prefixFromIpInt: _basePrefixFromIpInt,
+  _reportInvalidNetmask: _baseReportInvalidNetmask,
+  _prefixFromPrefixString: _basePrefixFromPrefixString,
+  _prefixFromIpString: _basePrefixFromIpString,
+  _splitAddrPrefix: _baseSplitAddrPrefix,
+};
 
 /**
  * Return the longhand version of the IP address as a string.
@@ -65,7 +85,7 @@ export function _baseCompressed(obj: Stringable): string {
  * "1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa"
  */
 export function _baseReversePointer(obj: ReversePointerable): string {
-  return obj._reversePointer;
+  return obj._reversePointer();
 }
 
 /**

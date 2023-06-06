@@ -1,5 +1,9 @@
 import { ByteArray } from "./constants";
 
+export function isUndefined(v: unknown): v is undefined {
+  return v === undefined;
+}
+
 export function isNumber(v: unknown): v is number {
   return typeof v === "number";
 }

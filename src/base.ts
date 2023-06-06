@@ -1,5 +1,11 @@
 import { AddressTypeError, NetmaskTypeError } from "./errors";
-import { ByteArray, IPInteger, IPv4ALLONES, IPv4LENGTH } from "./constants";
+import {
+  ByteArray,
+  IPInteger,
+  IPv4ALLONES,
+  IPv4LENGTH,
+  Netmask,
+} from "./constants";
 import {
   _baseCheckIntAddress,
   _baseCheckPackedAddress,
@@ -144,69 +150,12 @@ interface IPv4NetworkT extends BaseV4T, BaseNetworkT {
   isGlobal: () => boolean;
 }
 
-export type Netmask = {
-  netmask: IPv4Address;
-  prefixlen: number;
-};
-
 export class IPv4Address implements IPv4AddressT, BaseV4T, BaseAddressT {
   readonly version = 4;
   readonly maxPrefixlen = IPv4LENGTH;
   readonly _ALL_ONES = IPv4ALLONES;
   _netmaskCache: Record<string | number, Netmask> = {};
   _ip: number;
-
-  /**
-   * Represent and manipulate single IPv4 Addresses.
-   *
-   * @param address: A string or integer representing the IP.
-   * Additionally, an integer can be passed, so
-   * IPv4Address('192.0.2.1') == IPv4Address(3221225985).
-   * or, more generally
-   * IPv4Address(IPv4Address('192.0.2.1').toNumber()) ==
-   * IPv4Address('192.0.2.1')
-   * @throws {AddressValueError} If ipaddress isn't a valid IPv4 address.
-   * @returns {IPv4Address} The IPv4Address instance
-   */
-  constructor(address: string | IPInteger | ByteArray) {
-    if (isBigInt(address)) {
-      if (!isSafeNumber(address)) {
-        throw new AddressTypeError(
-          `Invalid IPv4 address big integer: ${address} is not convertable to a number`
-        );
-      }
-      address = Number(address);
-    }
-
-    if (isNumber(address)) {
-      this._checkIntAddress(address);
-      this._ip = address;
-      return;
-    }
-
-    // Bytes array, a packed IP address
-    if (Array.isArray(address)) {
-      if (address.every((value) => typeof value === "number")) {
-        this._checkPackedAddress(address, 4);
-        const ip = intFromBytes(address, "big");
-        if (!isNumber(ip)) {
-          throw new AddressTypeError(
-            `Invalid IPv4 address integer: ${ip} is of type ${typeof ip} instead of number`
-          );
-        }
-        this._ip = ip;
-        return;
-      }
-      throw new TypeError("Packed IP addresses must be arrays of numbers");
-    }
-
-    // we have a string or we assume it behaves like one.
-    if (address.includes("/")) {
-      throw new AddressTypeError(`Unexpected '/' in ${address}`);
-    }
-
-    this._ip = this._ipIntFromString(address);
-  }
 
   isPrivate(): boolean {
     // TODO: Add
@@ -366,43 +315,6 @@ export class IPv4Address implements IPv4AddressT, BaseV4T, BaseAddressT {
   }
 
   /**
-   * Make a (netmask, prefix_len) tuple from the given argument.
-   *
-   * Argument can be:
-   * - an integer (the prefix length)
-   * - a string representing the prefix length (e.g. "24")
-   * - a string representing the prefix netmask (e.g. "255.255.255.0")
-   * @param arg The argument.
-   * @returns {Netmask} The netmask and prefix length object.
-   */
-  _makeNetmask(this: IPv4Address, arg: string | number): Netmask {
-    let prefixlen: number;
-    if (this._netmaskCache[arg] === undefined) {
-      if (isNumber(arg)) {
-        prefixlen = arg;
-        if (!(0 <= prefixlen && prefixlen <= this.maxPrefixlen)) {
-          throw new NetmaskTypeError(`${prefixlen} is not a valid netmask`);
-        }
-      } else {
-        try {
-          prefixlen = this._prefixFromPrefixString(arg);
-        } catch (err: unknown) {
-          // Check for a netmask or hostmask in dotted-quad form.
-          // This may raise NetmaskTypeError
-          prefixlen = this._prefixFromIpString(arg);
-        }
-      }
-      const netmask = new IPv4Address(this._ipIntFromPrefix(prefixlen));
-      const result = {
-        netmask,
-        prefixlen,
-      };
-      this._netmaskCache[arg] = result;
-    }
-    return this._netmaskCache[arg];
-  }
-
-  /**
    * Turn the prefix length into a bitwise netmask.
    * @param prefixlen An integer, the prefix length.
    * @returns {IPInteger} An integer
@@ -414,77 +326,6 @@ export class IPv4Address implements IPv4AddressT, BaseV4T, BaseAddressT {
       return Number(result);
     }
     return result;
-  }
-
-  /**
-   * Turn the given IP string into an integer for comparison.
-   *
-   * @param address A string, the IP `address`.
-   * @returns {number} The IP `address` as an integer.
-   * @throws {AddressTypeError} If `address` isn't a valid IPv4 address.
-   */
-  _ipIntFromString(this: IPv4Address, ip_str: string): number {
-    if (ip_str === "") {
-      throw new AddressTypeError("Address cannot be empty");
-    }
-
-    const octets = ip_str.split(".");
-    if (octets.length !== 4) {
-      throw new AddressTypeError(`Expected 4 octets in ${ip_str}`);
-    }
-
-    try {
-      const parsedOctets = intFromBytes(
-        octets.map((octet) => this._parseOctet(octet)),
-        "big" // big-endian / network-byte order
-      );
-      if (!isNumber(parsedOctets)) {
-        throw new AddressTypeError(
-          `Invalid IPv4 address integer: ${parsedOctets} is of type ${typeof parsedOctets} instead of number`
-        );
-      }
-      return parsedOctets;
-    } catch (error: unknown) {
-      let message = `Unknown error occurred while parsing ${ip_str}.`;
-      if (error instanceof Error) message = `${error.message} in ${ip_str}`;
-      throw new AddressTypeError(message);
-    }
-  }
-
-  /**
-   * Convert a decimal octet to an integer.
-   * @param octet A string, the number to parse.
-   * @returns {number} The octet as an integer.
-   * @throws {TypeError} if the octet isn't strictly a decimal from [0..255].
-   */
-  _parseOctet(octet_str: string): number {
-    if (octet_str === "") {
-      throw new TypeError("Empty octet is not permitted.");
-    }
-    // Reject non-ASCII digits.
-    if (!strIsAscii(octet_str) && !strIsDigit(octet_str)) {
-      throw new TypeError(`Only decimal digits permitted in '${octet_str}'`);
-    }
-
-    // We do length check second, since the invalid character error
-    // is likely to be more informative for the user
-    if (octet_str.length > 3) {
-      throw new TypeError(`At most 3 characters permitted in '${octet_str}'`);
-    }
-
-    // Handle leading zeroes as strict as glibc's inet_pton()
-    // See security bug in Python's issue tracker, bpo-36384
-    if (octet_str !== "0" && octet_str.indexOf("0") === 0) {
-      throw new TypeError(`Leading zeroes are not permitted in '${octet_str}'`);
-    }
-
-    // Convert the integer (we know digits are legal)
-    const octet_int = parseInt(octet_str, 10);
-    if (octet_int > 255) {
-      throw new TypeError(`Octet ${octet_int} (> 255) not permitted`);
-    }
-
-    return octet_int;
   }
 
   /**
@@ -859,17 +700,6 @@ export class IPv4Network implements IPv4NetworkT, BaseV4T, BaseNetworkT {
    */
   _prefixFromIpInt(this: IPv4Network, ipInt: IPInteger): number {
     return _prefixFromIpInt(this, ipInt);
-  }
-
-  /**
-   * Turns a 32-bit integer into dotted decimal notation.
-   * @param ip_int An integer, the IP address.
-   * @returns {string} The IP address in dotted decimal notation.
-   */
-  _stringFromIpInt(ip_int: IPInteger): string {
-    return intToBytes(ip_int, 4, "big")
-      .map((byte) => byte.toString())
-      .join(".");
   }
 
   _splitAddrPrefix(
