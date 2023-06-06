@@ -9,7 +9,7 @@ import { intFromBytes, intToBytes, strIsAscii, strIsDigit } from "./utilities";
 import { isNumber, isUndefined } from "./typeGuards";
 
 import { AddressValueError } from "./AddressValueError";
-import { IPV4Address } from "./IPV4Address";
+import { IPv4Address } from "./IPv4Address";
 import { NetmaskValueError } from "./NetmaskValueError";
 
 /**
@@ -56,7 +56,7 @@ export const _BaseV4Struct = {
           prefixlen = cls._prefixFromIpString(arg);
         }
       }
-      const netmask = new IPV4Address(cls._ipIntFromPrefix(prefixlen));
+      const netmask = new IPv4Address(cls._ipIntFromPrefix(prefixlen));
       cls._netmaskCache[arg] = [netmask, prefixlen];
     }
     const result = cls._netmaskCache[arg];

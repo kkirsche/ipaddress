@@ -6,39 +6,15 @@ import {
   NetmaskCacheKey,
   NetmaskCacheValue,
   Prefixlen,
-  UnparsedIPV4Address,
+  UnparsedIPv4Address,
 } from "./constants";
-import {
-  _BaseAddressStruct,
-  _BaseAddressT,
-  _BaseAddressTInstance,
-} from "./_BaseAddress";
 import { _BaseV4Struct, _BaseV4T, _BaseV4TInstance } from "./_BaseV4";
 import { intFromBytes, isSafeNumber, v4IntToPacked } from "./utilities";
 import { isBigInt, isNumber } from "./typeGuards";
 
 import { AddressValueError } from "./AddressValueError";
+import { _BaseAddressStruct } from "./_BaseAddress";
 import { _IPAddressBaseStruct } from "./_IPAddressBase";
-
-export interface IPV4AddressT extends _BaseV4T, _BaseAddressT {
-  new (address: string | IPInteger | ByteArray): IPV4AddressTInstance;
-}
-
-export interface IPV4AddressTInstance
-  extends _BaseV4TInstance,
-    Omit<_BaseAddressTInstance, "version"> {
-  // from constructor
-  _ip: number;
-  // property
-  packed: ReturnType<typeof v4IntToPacked>;
-  isReserved: boolean;
-  isPrivate: boolean;
-  isGlobal: boolean;
-  isMulticast: boolean;
-  isUnspecified: boolean;
-  isLoopback: boolean;
-  isLinkLocal: boolean;
-}
 
 /**
  * Represent and manipulate single IPv4 Addresses.
@@ -52,12 +28,10 @@ export interface IPV4AddressTInstance
  * @throws {AddressValueError} If ipaddress isn't a valid IPv4 address.
  * @returns {IPv4Address} The IPv4Address instance
  */
-export class IPV4Address {
+export class IPv4Address {
   static readonly _version = 4;
-  static readonly version = 4;
   static readonly _ALL_ONES = IPv4ALLONES;
   static readonly _maxPrefixlen = IPv4LENGTH;
-  static readonly maxPrefixlen = IPv4LENGTH;
   static _netmaskCache: Record<NetmaskCacheKey, NetmaskCacheValue> = {};
   _ip: number;
 
@@ -110,19 +84,19 @@ export class IPV4Address {
       throw new AddressValueError(`Unexpected '/' in ${address}`);
     }
 
-    this._ip = IPV4Address._ipIntFromString(address);
+    this._ip = IPv4Address._ipIntFromString(address);
   }
 
-  get _ALL_ONES(): (typeof IPV4Address)["_ALL_ONES"] {
-    return IPV4Address._ALL_ONES;
+  get _ALL_ONES(): (typeof IPv4Address)["_ALL_ONES"] {
+    return IPv4Address._ALL_ONES;
   }
 
   get version(): 4 {
-    return IPV4Address._version;
+    return IPv4Address._version;
   }
 
   get maxPrefixlen() {
-    return IPV4Address._maxPrefixlen;
+    return IPv4Address._maxPrefixlen;
   }
 
   // BEGIN: _IPAddressBase
@@ -152,12 +126,12 @@ export class IPV4Address {
     return _IPAddressBaseStruct.reversePointer(this);
   }
 
-  _checkIntAddress(this: IPV4Address, address: number): void {
+  _checkIntAddress(this: IPv4Address, address: number): void {
     return _IPAddressBaseStruct._checkIntAddress(this, address);
   }
 
   _checkPackedAddress(
-    this: IPV4Address,
+    this: IPv4Address,
     address: ByteArray,
     expectedLen: number
   ): void {
@@ -171,7 +145,7 @@ export class IPV4Address {
    */
   static _ipIntFromPrefix(prefixlen: Prefixlen): number {
     const result = _IPAddressBaseStruct._ipIntFromPrefix(
-      IPV4Address,
+      IPv4Address,
       prefixlen
     );
     if (isBigInt(result)) {
@@ -186,8 +160,8 @@ export class IPV4Address {
    * @returns {Prefixlen} An integer, the prefix length.
    * @throws {TypeError} If the input intermingles zeroes & ones.
    */
-  static _prefixFromIpInt(ipInt: number): Prefixlen {
-    return _IPAddressBaseStruct._prefixFromIpInt(IPV4Address, ipInt);
+  static _prefixFromIpInt(ipInt: IPInteger): Prefixlen {
+    return _IPAddressBaseStruct._prefixFromIpInt(IPv4Address, ipInt);
   }
 
   static _reportInvalidNetmask(netmaskStr: string): never {
@@ -202,7 +176,7 @@ export class IPV4Address {
    */
   static _prefixFromPrefixString(prefixlenStr: string): Prefixlen {
     return _IPAddressBaseStruct._prefixFromPrefixString(
-      IPV4Address,
+      IPv4Address,
       prefixlenStr
     );
   }
@@ -215,20 +189,20 @@ export class IPV4Address {
    */
   static _prefixFromIpString(ipStr: string): Prefixlen {
     // @ts-expect-error typescript is being overly picky about type narrowing
-    return _IPAddressBaseStruct._prefixFromIpString(IPV4Address, ipStr);
+    return _IPAddressBaseStruct._prefixFromIpString(IPv4Address, ipStr);
   }
 
   /**
    * Helper function to parse address of Network/Interface.
    * @param address Argument of Network/Interface.
-   * @returns {[UnparsedIPV4Address, Prefixlen]} [addr, prefix] tuple
+   * @returns {[UnparsedIPv4Address, Prefixlen]} [addr, prefix] tuple
    */
   static _splitAddrPrefix(
-    address: UnparsedIPV4Address
-  ): [UnparsedIPV4Address, Prefixlen] {
+    address: UnparsedIPv4Address
+  ): [UnparsedIPv4Address, Prefixlen] {
     const [_addr, prefixlen] = _IPAddressBaseStruct._splitAddrPrefix(
       address,
-      IPV4Address._maxPrefixlen
+      IPv4Address._maxPrefixlen
     );
     if (isBigInt(_addr)) {
       throw new TypeError("Unexpected bigint in split addr prefix.");
@@ -236,8 +210,9 @@ export class IPV4Address {
     return [_addr, prefixlen];
   }
 
+  // END: _IPAddressBase
   // BEGIN: _BaseAddress
-  toNumber(this: IPV4Address): number {
+  toNumber(this: IPv4Address): number {
     const result = _BaseAddressStruct.toNumber(this);
     if (isBigInt(result)) {
       throw new Error("Unexpected bigint in toNumber");
@@ -245,15 +220,15 @@ export class IPV4Address {
     return result;
   }
 
-  equals(this: IPV4Address, other: IPV4Address): boolean {
+  equals(this: IPv4Address, other: IPv4Address): boolean {
     return _BaseAddressStruct.equals(this, other);
   }
 
-  lessThan(this: IPV4Address, other: IPV4Address): boolean {
+  lessThan(this: IPv4Address, other: IPv4Address): boolean {
     return _BaseAddressStruct.lessThan(this, other);
   }
 
-  add(this: IPV4Address, other: IPV4Address): number {
+  add(this: IPv4Address, other: IPv4Address): number {
     const result = _BaseAddressStruct.add(this, other);
     if (isBigInt(result)) {
       throw new Error("Unexpected bgiint in IPv4 addition");
@@ -261,7 +236,7 @@ export class IPV4Address {
     return result;
   }
 
-  sub(this: IPV4Address, other: IPV4Address): number {
+  sub(this: IPv4Address, other: IPv4Address): number {
     const result = _BaseAddressStruct.sub(this, other);
     if (isBigInt(result)) {
       throw new Error("Unexpected bgiint in IPv4 addition");
@@ -269,20 +244,20 @@ export class IPV4Address {
     return result;
   }
 
-  toRepr(this: IPV4Address): string {
-    return _BaseAddressStruct.toRepr("IPV4Address", this);
+  toRepr(this: IPv4Address): string {
+    return _BaseAddressStruct.toRepr("IPv4Address", this);
   }
 
-  toString(this: IPV4Address): string {
+  toString(this: IPv4Address): string {
     return _BaseAddressStruct.toString(this);
   }
 
-  _getAddressKey(this: IPV4Address): [4, IPV4Address] {
+  _getAddressKey(this: IPv4Address): [4, IPv4Address] {
     return [this.version, this];
   }
 
   // BEGIN: _BaseV4
-  _explodeShorthandIpString(this: IPV4Address): string {
+  _explodeShorthandIpString(this: IPv4Address): string {
     return _BaseV4Struct._explodeShorthandIpString(this);
   }
 
@@ -295,7 +270,7 @@ export class IPV4Address {
    * @returns {NetmaskCacheValue} The [netmask, prefixlen] tuple.
    */
   static _makeNetmask(arg: string | Prefixlen): NetmaskCacheValue {
-    return _BaseV4Struct._makeNetmask(IPV4Address, arg);
+    return _BaseV4Struct._makeNetmask(IPv4Address, arg);
   }
 
   /**
@@ -305,7 +280,7 @@ export class IPV4Address {
    * @throws {AddressValueError} if ipStr isn't a valid IPv4 Address.
    */
   static _ipIntFromString(ipStr: string): number {
-    return _BaseV4Struct._ipIntFromString(IPV4Address, ipStr);
+    return _BaseV4Struct._ipIntFromString(IPv4Address, ipStr);
   }
 
   /**
@@ -341,7 +316,9 @@ export class IPV4Address {
    * This implements the method described in RFC1035 3.5.
    * @returns {string} The reverse DNS pointer name.
    */
-  _reversePointer(this: IPV4Address): string {
+  _reversePointer(this: IPv4Address): string {
     return _BaseV4Struct._reversePointer(this);
   }
+
+  // END: _BaseV4
 }

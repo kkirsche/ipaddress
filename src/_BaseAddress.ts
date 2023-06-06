@@ -4,9 +4,9 @@ import {
   HasIP,
   Numberable,
   Stringable,
+  Versionable,
 } from "./interfaces";
 import { IPInteger, IPVersion } from "./constants";
-import { _IPAddressBaseT, _IPAddressBaseTInstance } from "./_IPAddressBase";
 
 import { isSafeNumber } from "./utilities";
 
@@ -16,23 +16,9 @@ import { isSafeNumber } from "./utilities";
  * This IP class contains the the version independent methods which are
  * used by single IP addresses.
  */
-export interface _BaseAddressT extends _IPAddressBaseT {
-  new (): _BaseAddressTInstance;
-}
-
-export interface _BaseAddressTInstance extends _IPAddressBaseTInstance {
-  toNumber: () => IPInteger;
-  equals: (other: Comparable) => boolean;
-  lessThan: (other: Comparable) => boolean;
-  add: (other: _BaseAddressT) => IPInteger;
-  sub: (other: _BaseAddressT) => IPInteger;
-  toRepr: () => string;
-  toString: () => string;
-  // toHash: () => bigint;
-  _getAddressKey: () => [IPVersion, _BaseAddressT];
-}
 
 export const _BaseAddressStruct = {
+  // instance methods
   toNumber: (obj: HasIP): IPInteger => {
     return obj._ip;
   },
@@ -74,9 +60,7 @@ export const _BaseAddressStruct = {
   toString: (obj: ConvertsToString): string => {
     return obj._stringFromIpInt(obj._ip);
   },
-  _getAddressKey: (
-    obj: _BaseAddressTInstance
-  ): [IPVersion, _BaseAddressTInstance] => {
+  _getAddressKey: <T extends Versionable>(obj: T): [IPVersion, T] => {
     return [obj.version, obj];
   },
 };

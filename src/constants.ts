@@ -1,4 +1,4 @@
-import { IPV4Address } from "./IPV4Address";
+import { IPv4Address } from "./IPv4Address";
 
 export type IPVersion = 4 | 6;
 export type Prefixlen = number;
@@ -17,13 +17,13 @@ export type ByteOrder = "big" | "little";
 export type ByteArray = number[];
 
 export type NetmaskCacheKey = string | number;
-export type NetmaskCacheValue = [IPV4Address, Prefixlen];
+export type NetmaskCacheValue = [IPv4Address, Prefixlen];
 export type Netmask = {
-  netmask: IPV4Address;
+  netmask: IPv4Address;
   prefixlen: number;
 };
 
-export type UnparsedIPV4Address =
+export type UnparsedIPv4Address =
   | string
   | Exclude<IPInteger, IPV6Integer>
   | ByteArray;
@@ -31,4 +31,8 @@ export type UnparsedIPV6Address =
   | string
   | Exclude<IPInteger, IPV4Integer>
   | ByteArray;
-export type UnparsedAddress = UnparsedIPV4Address | UnparsedIPV6Address;
+export type UnparsedAddress = UnparsedIPv4Address | UnparsedIPV6Address;
+
+export type UnparsedIPv4Network =
+  | UnparsedIPv4Address
+  | [UnparsedIPv4Address, number]; // [addr, mask]

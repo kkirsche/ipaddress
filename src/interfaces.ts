@@ -8,7 +8,38 @@ import {
   Prefixlen,
 } from "./constants";
 
+import { IPv4Address } from "./IPv4Address";
+import { IPv4Network } from "./base";
 import { _IPAddressBaseT } from "./_IPAddressBase";
+
+export type IPv4AddressClass = typeof IPv4Address;
+export type IPv4AddressInstance = IPv4Address;
+
+export type AddressClass = IPv4AddressClass;
+export type AddressInstance = IPv4AddressInstance;
+
+export type NetworkClass = typeof IPv4Network;
+export type NetworkInstance = IPv4Network;
+
+export interface HasNetworkAddress {
+  networkAddress: IPv4Address;
+}
+
+export interface NetworkObj extends HasNetworkAddress, Stringable {
+  version: IPVersion;
+  prefixlen: number;
+  netmask: IPv4Address;
+  hostmask: IPv4Address;
+}
+
+export interface NetworkContainer {
+  contains: (other: NetworkObj & HasIP) => boolean;
+}
+
+export interface MayIterHosts extends HasNetworkAddress {
+  _addressClass: typeof IPv4Address;
+  broadcastAddress: IPv4Address;
+}
 
 export interface Stringable {
   toString: () => string;
@@ -59,7 +90,7 @@ export interface ReversePointerable {
 }
 
 export interface SupportsOctetParsing {
-  _parseOctet: (octetStr: string) => number;
+  _parseOctet: (typeof IPv4Address)["_parseOctet"];
 }
 
 export interface Netmaskable {
