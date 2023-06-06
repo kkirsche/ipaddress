@@ -1,12 +1,8 @@
 import {
   AddressInstance,
-  HasNetworkAddressAndNetmask,
-  HasNetworkAddressAndPrefixlen,
-  MayIterHosts,
   NetworkClass,
   NetworkInstance,
   Stringable,
-  Versionable,
 } from "./interfaces";
 import { IPInteger, IPVersion, Netmask } from "./constants";
 
@@ -66,11 +62,14 @@ export interface _BaseNetworkTInstance {
   isUnspecified: boolean;
   isLoopback: boolean;
 }
-function* hosts(obj: NetworkInstance): Generator<IPv4Address> {
+function* hosts(
+  cls: NetworkClass,
+  obj: NetworkInstance
+): Generator<IPv4Address> {
   const network = obj.networkAddress.toNumber();
   const broadcast = obj.broadcastAddress.toNumber();
   for (let x = network + 1; x < broadcast; x++) {
-    yield new obj._addressClass(x);
+    yield new cls._addressClass(x);
   }
 }
 
@@ -83,20 +82,20 @@ export const _BaseNetworkStruct = {
   },
   hosts,
   iterate: hosts,
-  getItem: (obj: NetworkInstance, n: number) => {
+  getItem: (cls: NetworkClass, obj: NetworkInstance, n: number) => {
     const network = obj.networkAddress.toNumber();
     const broadcast = obj.broadcastAddress.toNumber();
     if (n >= 0) {
       if (network + n > broadcast) {
         throw new Error("address out of range");
       }
-      return new obj._addressClass(network + n);
+      return new cls._addressClass(network + n);
     } else {
       n += 1;
       if (broadcast + n < network) {
         throw new Error("address out of range");
       }
-      return new obj._addressClass(broadcast + n);
+      return new cls._addressClass(broadcast + n);
     }
   },
   lessThan: (obj: NetworkInstance, other: NetworkInstance): boolean => {

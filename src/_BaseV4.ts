@@ -47,7 +47,7 @@ export const _BaseV4Struct = {
     if (cls._netmaskCache[arg] === undefined) {
       if (isNumber(arg)) {
         prefixlen = arg;
-        if (!(0 <= prefixlen && prefixlen <= cls.maxPrefixlen)) {
+        if (!(0 <= prefixlen && prefixlen <= cls._maxPrefixlen)) {
           throw new NetmaskValueError(`${prefixlen} is not a valid netmask`);
         }
       } else {

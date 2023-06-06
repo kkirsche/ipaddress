@@ -9,12 +9,12 @@ import {
   UnparsedIPv4Address,
   UnparsedIPv4Network,
 } from "./constants";
-import { isBigInt, isByteArray } from "./typeGuards";
 
 import { IPv4Address } from "./IPv4Address";
 import { _BaseNetworkStruct } from "./_BaseNetwork";
 import { _BaseV4Struct } from "./_BaseV4";
 import { _IPAddressBaseStruct } from "./_IPAddressBase";
+import { isBigInt } from "./typeGuards";
 
 // extends _BaseV4, _BaseNetwork
 export class IPv4Network {
@@ -165,7 +165,6 @@ export class IPv4Network {
    * @throws {NetmaskValueError} If the input is not a valid netmask/hostmask;
    */
   static _prefixFromIpString(ipStr: string): Prefixlen {
-    // @ts-expect-error typescript is being overly picky about type narrowing
     return _IPAddressBaseStruct._prefixFromIpString(IPv4Address, ipStr);
   }
 
@@ -196,13 +195,13 @@ export class IPv4Network {
     return _BaseNetworkStruct.toString(this);
   }
   *hosts(this: IPv4Network): Generator<IPv4Address> {
-    yield* _BaseNetworkStruct.hosts(this);
+    yield* _BaseNetworkStruct.hosts(IPv4Network, this);
   }
   *iterate(this: IPv4Network): Generator<IPv4Address> {
-    yield* _BaseNetworkStruct.iterate(this);
+    yield* _BaseNetworkStruct.iterate(IPv4Network, this);
   }
   getItem(this: IPv4Network, n: number): IPv4Address {
-    return _BaseNetworkStruct.getItem(this, n);
+    return _BaseNetworkStruct.getItem(IPv4Network, this, n);
   }
   lessThan(this: IPv4Network, other: IPv4Network): boolean {
     return _BaseNetworkStruct.lessThan(this, other);
