@@ -9,7 +9,7 @@ import {
 } from "./constants";
 
 import { IPv4Address } from "./IPv4Address";
-import { IPv4Network } from "./base";
+import { IPv4Network } from "./IPv4Network";
 import { _IPAddressBaseT } from "./_IPAddressBase";
 
 export type IPv4AddressClass = typeof IPv4Address;

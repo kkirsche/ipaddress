@@ -8,12 +8,12 @@ import {
   Prefixlen,
   UnparsedIPv4Address,
 } from "./constants";
-import { _BaseV4Struct, _BaseV4T, _BaseV4TInstance } from "./_BaseV4";
-import { intFromBytes, isSafeNumber, v4IntToPacked } from "./utilities";
+import { intFromBytes, isSafeNumber } from "./utilities";
 import { isBigInt, isNumber } from "./typeGuards";
 
 import { AddressValueError } from "./AddressValueError";
 import { _BaseAddressStruct } from "./_BaseAddress";
+import { _BaseV4Struct } from "./_BaseV4";
 import { _IPAddressBaseStruct } from "./_IPAddressBase";
 
 /**
@@ -87,18 +87,6 @@ export class IPv4Address {
     this._ip = IPv4Address._ipIntFromString(address);
   }
 
-  get _ALL_ONES(): (typeof IPv4Address)["_ALL_ONES"] {
-    return IPv4Address._ALL_ONES;
-  }
-
-  get version(): 4 {
-    return IPv4Address._version;
-  }
-
-  get maxPrefixlen() {
-    return IPv4Address._maxPrefixlen;
-  }
-
   // BEGIN: _IPAddressBase
 
   /**
@@ -127,7 +115,7 @@ export class IPv4Address {
   }
 
   _checkIntAddress(this: IPv4Address, address: number): void {
-    return _IPAddressBaseStruct._checkIntAddress(this, address);
+    return _IPAddressBaseStruct._checkIntAddress(IPv4Address, address);
   }
 
   _checkPackedAddress(
@@ -135,7 +123,11 @@ export class IPv4Address {
     address: ByteArray,
     expectedLen: number
   ): void {
-    return _IPAddressBaseStruct._checkPackedAddress(this, address, expectedLen);
+    return _IPAddressBaseStruct._checkPackedAddress(
+      IPv4Address,
+      address,
+      expectedLen
+    );
   }
 
   /**
@@ -188,7 +180,6 @@ export class IPv4Address {
    * @throws {NetmaskValueError} If the input is not a valid netmask/hostmask;
    */
   static _prefixFromIpString(ipStr: string): Prefixlen {
-    // @ts-expect-error typescript is being overly picky about type narrowing
     return _IPAddressBaseStruct._prefixFromIpString(IPv4Address, ipStr);
   }
 
@@ -320,5 +311,12 @@ export class IPv4Address {
     return _BaseV4Struct._reversePointer(this);
   }
 
+  get version(): 4 {
+    return IPv4Address._version;
+  }
+
+  get maxPrefixlen() {
+    return IPv4Address._maxPrefixlen;
+  }
   // END: _BaseV4
 }

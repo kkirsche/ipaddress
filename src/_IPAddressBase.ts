@@ -3,18 +3,18 @@
 import {
   AddressClass,
   Explodable,
+  NetworkClass,
   ReversePointerable,
   Stringable,
-  Versionable,
 } from "./interfaces";
 import { AddressTypeError, NetmaskTypeError } from "./errors";
 import {
   ByteArray,
   IPInteger,
-  IPV4Integer,
-  IPV6Integer,
   IPVersion,
   Prefixlen,
+  UnparsedAddress,
+  UnparsedNetwork,
 } from "./constants";
 import {
   _countRighthandZeroBits,
@@ -64,29 +64,35 @@ export const _IPAddressBaseStruct = {
     return obj._reversePointer();
   },
   // instance
-  _checkIntAddress: (obj: Versionable, address: IPInteger): void => {
+  _checkIntAddress: (
+    cls: AddressClass | NetworkClass,
+    address: IPInteger
+  ): void => {
     if (address < 0) {
-      const msg = `${address} (< 0) is not permitted as an IPv${obj.version} address`;
+      const msg = `${address} (< 0) is not permitted as an IPv${cls._version} address`;
       throw new AddressTypeError(msg);
     }
-    if (address > obj._ALL_ONES) {
-      const msg = `${address} (> 2**${obj.maxPrefixlen}) is not permitted as an IPv${obj.version} address`;
+    if (address > cls._ALL_ONES) {
+      const msg = `${address} (> 2**${cls._maxPrefixlen}) is not permitted as an IPv${cls._version} address`;
       throw new AddressTypeError(msg);
     }
   }, // throws if invalid
   _checkPackedAddress: (
-    obj: Versionable,
+    cls: AddressClass | NetworkClass,
     address: ByteArray,
     expectedLen: number
   ): void => {
     const addressLen = address.length;
     if (addressLen !== expectedLen) {
-      const msg = `'${address}' (len ${addressLen} != ${expectedLen}) is not permitted as an IPv${obj.version} address.`;
+      const msg = `'${address}' (len ${addressLen} != ${expectedLen}) is not permitted as an IPv${cls._version} address.`;
       throw new AddressTypeError(msg);
     }
   },
   // class methods
-  _ipIntFromPrefix: (cls: AddressClass, prefixlen: number): IPInteger => {
+  _ipIntFromPrefix: (
+    cls: AddressClass | NetworkClass,
+    prefixlen: number
+  ): IPInteger => {
     const result =
       BigInt(cls._ALL_ONES) ^ (BigInt(cls._ALL_ONES) >> BigInt(prefixlen));
     if (isSafeNumber(result)) {
@@ -94,7 +100,10 @@ export const _IPAddressBaseStruct = {
     }
     return result;
   },
-  _prefixFromIpInt: (cls: AddressClass, ipInt: IPInteger): number => {
+  _prefixFromIpInt: (
+    cls: AddressClass | NetworkClass,
+    ipInt: IPInteger
+  ): number => {
     const trailingZeroes = _countRighthandZeroBits(ipInt, cls._maxPrefixlen);
     const prefixlen = cls._maxPrefixlen - trailingZeroes;
     const leadingOnes = BigInt(ipInt) >> BigInt(trailingZeroes);
@@ -112,7 +121,7 @@ export const _IPAddressBaseStruct = {
     throw new NetmaskTypeError(msg);
   },
   _prefixFromPrefixString: (
-    cls: AddressClass,
+    cls: AddressClass | NetworkClass,
     prefixlenStr: string
   ): number => {
     // parseInt allows leading +/- as well as surrounding whitespace,
@@ -165,25 +174,9 @@ export const _IPAddressBaseStruct = {
 };
 
 function _splitAddrPrefix(
-  address: string,
+  address: UnparsedAddress | UnparsedNetwork,
   prefixlen: Prefixlen
-): [string, Prefixlen];
-function _splitAddrPrefix(
-  address: IPV4Integer,
-  prefixlen: Prefixlen
-): [IPV4Integer, Prefixlen];
-function _splitAddrPrefix(
-  address: IPV6Integer,
-  prefixlen: Prefixlen
-): [IPV6Integer, Prefixlen];
-function _splitAddrPrefix(
-  address: ByteArray,
-  prefixlen: Prefixlen
-): [ByteArray, Prefixlen];
-function _splitAddrPrefix(
-  address: string | IPInteger | ByteArray,
-  prefixlen: Prefixlen
-): [string | IPInteger | ByteArray, Prefixlen] {
+): [UnparsedAddress, Prefixlen] {
   // a packed address or integer
   if (isNumber(address) || isBigInt(address) || isByteArray(address)) {
     return [address, prefixlen];

@@ -1,20 +1,28 @@
 import {
   ByteArray,
+  IPVersion,
+  IPv4ALLONES,
+  IPv4LENGTH,
+  NetmaskCacheKey,
   NetmaskCacheValue,
   Prefixlen,
   UnparsedIPv4Address,
   UnparsedIPv4Network,
 } from "./constants";
+import { isBigInt, isByteArray } from "./typeGuards";
 
 import { IPv4Address } from "./IPv4Address";
 import { _BaseNetworkStruct } from "./_BaseNetwork";
 import { _BaseV4Struct } from "./_BaseV4";
 import { _IPAddressBaseStruct } from "./_IPAddressBase";
-import { isBigInt } from "./typeGuards";
 
 // extends _BaseV4, _BaseNetwork
 export class IPv4Network {
-  static readonly _addressClass: typeof IPv4Address = IPv4Address;
+  static readonly _version = 4;
+  static readonly _ALL_ONES = IPv4ALLONES;
+  static readonly _maxPrefixlen = IPv4LENGTH;
+  static _netmaskCache: Record<NetmaskCacheKey, NetmaskCacheValue> = {};
+  static readonly _addressClass = IPv4Address;
 
   networkAddress: IPv4Address;
   netmask: IPv4Address;
@@ -48,9 +56,9 @@ export class IPv4Network {
    * @throws {AddressTypeError, NetmaskTypeError, TypeError}
    */
   constructor(address: UnparsedIPv4Network, strict = true) {
-    const [addr, mask] = this._splitAddrPrefix(address);
-    this.networkAddress = new this._addressClass(addr);
-    const { netmask, prefixlen } = this._makeNetmask(mask);
+    const [addr, mask] = IPv4Network._splitAddrPrefix(address);
+    this.networkAddress = new IPv4Network._addressClass(addr);
+    const [netmask, prefixlen] = IPv4Network._makeNetmask(mask);
     this.netmask = netmask;
     this._prefixlen = prefixlen;
     const packed = BigInt(this.networkAddress.toNumber());
@@ -92,7 +100,7 @@ export class IPv4Network {
   }
 
   _checkIntAddress(this: IPv4Network, address: number): void {
-    return _IPAddressBaseStruct._checkIntAddress(this, address);
+    return _IPAddressBaseStruct._checkIntAddress(IPv4Network, address);
   }
 
   _checkPackedAddress(
@@ -100,7 +108,11 @@ export class IPv4Network {
     address: ByteArray,
     expectedLen: number
   ): void {
-    return _IPAddressBaseStruct._checkPackedAddress(this, address, expectedLen);
+    return _IPAddressBaseStruct._checkPackedAddress(
+      IPv4Network,
+      address,
+      expectedLen
+    );
   }
 
   /**
@@ -163,7 +175,7 @@ export class IPv4Network {
    * @returns {[UnparsedIPv4Address, Prefixlen]} [addr, prefix] tuple
    */
   static _splitAddrPrefix(
-    address: UnparsedIPv4Address
+    address: UnparsedIPv4Address | UnparsedIPv4Network
   ): [UnparsedIPv4Address, Prefixlen] {
     const [_addr, prefixlen] = _IPAddressBaseStruct._splitAddrPrefix(
       address,
@@ -203,6 +215,34 @@ export class IPv4Network {
   }
   overlaps(this: IPv4Network, other: IPv4Network): boolean {
     return _BaseNetworkStruct.overlaps(this, other);
+  }
+  get broadcastAddress(): IPv4Address {
+    return _BaseNetworkStruct.broadcastAddress(IPv4Network, this);
+  }
+  // https://github.com/python/cpython/blob/eb0ce92141cd14196a8922cfe9df4a713c5c1d9b/Lib/ipaddress.py#L764
+  get hostmask(): IPv4Address {
+    return _BaseNetworkStruct.hostmask(IPv4Network, this);
+  }
+  get withPrefixlen(): string {
+    return _BaseNetworkStruct.withPrefixlen(this);
+  }
+  get withNetmask(): string {
+    return _BaseNetworkStruct.withNetmask(this);
+  }
+  get withHostmask(): string {
+    return _BaseNetworkStruct.withHostmask(this);
+  }
+  get numAddresses(): number {
+    return _BaseNetworkStruct.numAddresses(this);
+  }
+  get prefixlen(): number {
+    return _BaseNetworkStruct.prefixlen(this);
+  }
+  compareNetworks(other: IPv4Network): 1 | 0 | -1 {
+    return _BaseNetworkStruct.compareNetworks(this, other);
+  }
+  _getNetworksKey(): [IPVersion, IPv4Address, IPv4Address] {
+    return _BaseNetworkStruct._getNetworksKey(this);
   }
   // END: _BaseNetwork
   // BEGIN: _BaseV4
@@ -268,6 +308,12 @@ export class IPv4Network {
    */
   _reversePointer(this: IPv4Network): string {
     return _BaseV4Struct._reversePointer(this);
+  }
+  get maxPrefixlen(): 32 {
+    return IPv4Network._maxPrefixlen;
+  }
+  get version(): 4 {
+    return IPv4Network._version;
   }
   // END: _BaseV4
 }

@@ -36,3 +36,4 @@ export type UnparsedAddress = UnparsedIPv4Address | UnparsedIPV6Address;
 export type UnparsedIPv4Network =
   | UnparsedIPv4Address
   | [UnparsedIPv4Address, number]; // [addr, mask]
+export type UnparsedNetwork = UnparsedIPv4Network;

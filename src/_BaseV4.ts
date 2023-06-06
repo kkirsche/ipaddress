@@ -1,10 +1,10 @@
+import { AddressClass, NetworkClass, Stringable } from "./interfaces";
 import {
   IPv4ALLONES,
   IPv4LENGTH,
   NetmaskCacheKey,
   NetmaskCacheValue,
 } from "./constants";
-import { Netmaskable, Stringable, SupportsOctetParsing } from "./interfaces";
 import { intFromBytes, intToBytes, strIsAscii, strIsDigit } from "./utilities";
 import { isNumber, isUndefined } from "./typeGuards";
 
@@ -39,7 +39,10 @@ export interface _BaseV4TInstance {
 
 export const _BaseV4Struct = {
   _explodeShorthandIpString: (obj: Stringable) => obj.toString(),
-  _makeNetmask: (cls: Netmaskable, arg: string | number): NetmaskCacheValue => {
+  _makeNetmask: (
+    cls: AddressClass | NetworkClass,
+    arg: string | number
+  ): NetmaskCacheValue => {
     let prefixlen: number;
     if (cls._netmaskCache[arg] === undefined) {
       if (isNumber(arg)) {
@@ -73,7 +76,10 @@ export const _BaseV4Struct = {
    * @returns {number} The IP `address` as an integer.
    * @throws {AddressTypeError} If `address` isn't a valid IPv4 address.
    */
-  _ipIntFromString: (cls: SupportsOctetParsing, ipStr: string): number => {
+  _ipIntFromString: (
+    cls: AddressClass | NetworkClass,
+    ipStr: string
+  ): number => {
     if (ipStr === "") {
       throw new AddressValueError("Address cannot be empty");
     }
@@ -145,6 +151,11 @@ export const _BaseV4Struct = {
       .map((byte) => byte.toString())
       .join(".");
   },
-  _reversePointer: (obj: Stringable) =>
-    `${obj.toString().split(".").reverse().join(".")}.in-addr.arpa`,
+  _reversePointer: (obj: _reversePointerParam): string => {
+    return `${obj.toString().split(".").reverse().join(".")}.in-addr.arpa`;
+  },
 };
+
+interface _reversePointerParam {
+  toString: () => string;
+}
