@@ -7,8 +7,11 @@ import {
 import { IPInteger, IPVersion, Netmask } from "./constants";
 
 import { IPv4Address } from "./IPv4Address";
+import { IPv4Network } from "./IPv4Network";
 import { _BaseConstants } from "./_BaseConstants";
 import { _IPAddressBaseT } from "./_IPAddressBase";
+import { isNull } from "./typeGuards";
+import { isSafeNumber } from "./utilities";
 
 /**
  * A generic IP network object.
@@ -195,4 +198,117 @@ export const _BaseNetworkStruct = {
   ): [IPVersion, AddressInstance, AddressInstance] => {
     return [obj.version, obj.networkAddress, obj.netmask];
   },
+  subnets,
+  supernet: (
+    cls: NetworkClass,
+    obj: NetworkInstance,
+    prefixlenDiff = 1,
+    newPrefix: number | null = null
+  ): IPv4Network => {
+    if (obj._prefixlen === 0) {
+      return obj;
+    }
+
+    if (!isNull(newPrefix)) {
+      if (newPrefix > obj._prefixlen) {
+        throw new Error("new prefix must be shorter");
+      }
+      if (prefixlenDiff !== 1) {
+        throw new Error("cannot set prefixlenDiff and newPrefix");
+      }
+      prefixlenDiff = obj._prefixlen - prefixlenDiff;
+    }
+
+    const newPrefixlen = obj._prefixlen - prefixlenDiff;
+    if (newPrefixlen < 0) {
+      throw new Error(
+        `current prefixlen is ${obj._prefixlen}, cannot have a prefixlenDiff of ${prefixlenDiff}`
+      );
+    }
+
+    let value: bigint | number =
+      BigInt(obj.networkAddress.toNumber()) &
+      (BigInt(obj.netmask.toNumber()) << BigInt(prefixlenDiff));
+
+    if (isSafeNumber(value)) {
+      value = Number(value);
+    }
+
+    // @ts-expect-error temporary because we don't have IPv6 stuff yet
+    return new cls([value, newPrefixlen]);
+  },
+  _isSubnetOf: (a: NetworkInstance, b: NetworkInstance): boolean => {
+    // Always false if one is v4 and the other is v6
+    if (a.version !== b.version) {
+      throw new Error(
+        `${a.toString()} and ${b.toString()} are not of the same version`
+      );
+    }
+
+    // yes, I know this is wonky and the variable naming is bad
+    // https://github.com/python/cpython/blob/eb0ce92141cd14196a8922cfe9df4a713c5c1d9b/Lib/ipaddress.py#L1041
+    const lessThanOrEqualToNetworkAddr =
+      b.networkAddress.lessThan(a.networkAddress) ||
+      b.networkAddress.equals(a.networkAddress);
+    const greaterThanOrEqualToBroadcastAddr =
+      a.broadcastAddress.lessThan(b.broadcastAddress) ||
+      a.broadcastAddress.equals(b.broadcastAddress);
+
+    return lessThanOrEqualToNetworkAddr && greaterThanOrEqualToBroadcastAddr;
+  },
+  subnetOf: (
+    cls: NetworkClass,
+    obj: NetworkInstance,
+    other: NetworkInstance
+  ): boolean => {
+    return cls._isSubnetOf(obj, other);
+  },
+  supernetOf: (
+    cls: NetworkClass,
+    obj: NetworkInstance,
+    other: NetworkInstance
+  ): boolean => {
+    return cls._isSubnetOf(other, obj);
+  },
 };
+
+function* subnets(
+  cls: NetworkClass,
+  obj: NetworkInstance,
+  prefixlenDiff = 1,
+  newPrefix: number | null = null
+): Generator<NetworkInstance> {
+  if (obj._prefixlen === obj.maxPrefixlen) {
+    yield obj;
+    return;
+  }
+
+  if (!isNull(newPrefix)) {
+    if (newPrefix < obj._prefixlen) {
+      throw new Error("new prefix must be longer");
+    }
+    if (prefixlenDiff !== 1) {
+      throw new Error("cannot set prefixlenDiff and newPrefix");
+    }
+    prefixlenDiff = newPrefix - obj._prefixlen;
+  }
+
+  if (prefixlenDiff < 0) {
+    throw new Error("prefix length diff must be > 0");
+  }
+  const newPrefixlen = obj._prefixlen + prefixlenDiff;
+  if (newPrefixlen > obj.maxPrefixlen) {
+    throw new Error(
+      `prefix length diff ${newPrefixlen} is invalid for netblock ${obj.toString()}`
+    );
+  }
+
+  const start = obj.networkAddress.toNumber();
+  const end = obj.broadcastAddress.toNumber();
+  const step =
+    (BigInt(obj.hostmask.toNumber()) + BigInt(1)) >> BigInt(prefixlenDiff);
+  for (let newAddr = start; newAddr < end; step) {
+    const current = new cls([newAddr, newPrefixlen]);
+    yield current;
+  }
+}

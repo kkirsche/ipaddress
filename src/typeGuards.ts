@@ -4,6 +4,10 @@ export function isUndefined(v: unknown): v is undefined {
   return v === undefined;
 }
 
+export function isNull(v: unknown): v is null {
+  return v === null;
+}
+
 export function isNumber(v: unknown): v is number {
   return typeof v === "number";
 }

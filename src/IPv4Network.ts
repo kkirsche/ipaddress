@@ -243,6 +243,35 @@ export class IPv4Network {
   _getNetworksKey(): [IPVersion, IPv4Address, IPv4Address] {
     return _BaseNetworkStruct._getNetworksKey(this);
   }
+  *subnets(
+    this: IPv4Network,
+    prefixlenDiff = 1,
+    newPrefix: number | null = null
+  ): Generator<IPv4Network> {
+    yield* _BaseNetworkStruct.subnets(
+      IPv4Network,
+      this,
+      prefixlenDiff,
+      newPrefix
+    );
+  }
+  supernet(prefixlenDiff = 1, newPrefix: number | null = null): IPv4Network {
+    return _BaseNetworkStruct.supernet(
+      IPv4Network,
+      this,
+      prefixlenDiff,
+      newPrefix
+    );
+  }
+  static _isSubnetOf(a: IPv4Network, b: IPv4Network): boolean {
+    return _BaseNetworkStruct._isSubnetOf(a, b);
+  }
+  subnetOf(this: IPv4Network, other: IPv4Network): boolean {
+    return _BaseNetworkStruct.subnetOf(IPv4Network, this, other);
+  }
+  supernetOf(this: IPv4Network, other: IPv4Network): boolean {
+    return _BaseNetworkStruct.supernetOf(IPv4Network, this, other);
+  }
   // END: _BaseNetwork
   // BEGIN: _BaseV4
 
