@@ -122,7 +122,10 @@ export const _BaseNetworkStruct = {
       obj.netmask.toNumber() === other.netmask.toNumber()
     );
   },
-  contains: (obj: NetworkInstance, other: AddressInstance): boolean => {
+  contains: <I extends NetworkInstance, O extends AddressInstance>(
+    obj: I,
+    other: O
+  ): boolean => {
     // always false if one is v4 and the other is v6
     if (obj.version !== other.version) {
       return false;
@@ -132,7 +135,10 @@ export const _BaseNetworkStruct = {
       BigInt(obj.networkAddress._ip)
     );
   },
-  overlaps: (obj: NetworkInstance, other: NetworkInstance): boolean => {
+  overlaps: <I extends NetworkInstance, O extends NetworkInstance>(
+    obj: I,
+    other: O
+  ): boolean => {
     return (
       other.contains(obj.networkAddress) ||
       other.contains(obj.broadcastAddress) ||
@@ -140,15 +146,18 @@ export const _BaseNetworkStruct = {
       obj.contains(other.broadcastAddress)
     );
   },
-  broadcastAddress: (
-    cls: NetworkClass,
-    obj: NetworkInstance
+  broadcastAddress: <C extends NetworkClass, I extends NetworkInstance>(
+    cls: C,
+    obj: I
   ): AddressInstance => {
     return new cls._addressClass(
       BigInt(obj.networkAddress.toNumber()) | BigInt(obj.hostmask.toNumber())
     );
   },
-  hostmask: (cls: NetworkClass, obj: NetworkInstance): AddressInstance => {
+  hostmask: <T extends NetworkClass>(
+    cls: T,
+    obj: NetworkInstance
+  ): AddressInstance => {
     return new cls._addressClass(
       BigInt(obj.networkAddress.toNumber()) ^ BigInt(cls._ALL_ONES)
     );
@@ -168,6 +177,7 @@ export const _BaseNetworkStruct = {
   prefixlen: (obj: NetworkInstance): number => {
     return obj._prefixlen;
   },
+  addressExclude,
   compareNetworks: (
     obj: NetworkInstance,
     other: NetworkInstance
@@ -277,10 +287,10 @@ function* subnets(
   obj: NetworkInstance,
   prefixlenDiff = 1,
   newPrefix: number | null = null
-): Generator<NetworkInstance> {
+) {
   if (obj._prefixlen === obj.maxPrefixlen) {
     yield obj;
-    return;
+    return obj;
   }
 
   if (!isNull(newPrefix)) {
@@ -307,8 +317,74 @@ function* subnets(
   const end = obj.broadcastAddress.toNumber();
   const step =
     (BigInt(obj.hostmask.toNumber()) + BigInt(1)) >> BigInt(prefixlenDiff);
+  const subnets: (typeof obj)[] = [];
   for (let newAddr = start; newAddr < end; step) {
     const current = new cls([newAddr, newPrefixlen]);
     yield current;
+    subnets.push(current);
+  }
+  return subnets;
+}
+
+function* addressExclude<T extends NetworkClass>(
+  cls: T,
+  obj: NetworkInstance,
+  other: NetworkInstance
+) {
+  if (obj.version !== other.version) {
+    throw new Error(
+      `${obj.toString()} and ${other.toString()} are not of the same version`
+    );
+  }
+
+  if (!other.subnetOf(obj)) {
+    throw new Error(
+      `${other.toString()} is not contained in ${obj.toString()}`
+    );
+  }
+
+  if (other.equals(obj)) {
+    return null;
+  }
+
+  // Make sure we're comparing the network of other.
+  other = new cls(`${other.networkAddress.toString()}/${other.prefixlen}`);
+
+  const subnetGenerator = obj.subnets();
+  let si1 = subnetGenerator.next();
+  let si2 = subnetGenerator.next();
+
+  if (!si1.done && !si2.done) {
+    let s1 = si1.value;
+    let s2 = si2.value;
+
+    while (!s1.equals(other) && !s2.equals(other)) {
+      if (other.subnetOf(s1)) {
+        yield s2;
+
+        si1 = subnetGenerator.next();
+        si2 = subnetGenerator.next();
+        if (!si1.done) {
+          s1 = si1.value;
+        }
+        if (!si2.done) {
+          s2 = si2.value;
+        }
+      } else if (other.subnetOf(s2)) {
+        yield s1;
+        si1 = subnetGenerator.next();
+        si2 = subnetGenerator.next();
+        if (!si1.done) {
+          s1 = si1.value;
+        }
+        if (!si2.done) {
+          s2 = si2.value;
+        }
+      } else {
+        throw new Error(
+          `Error performing exclusion: s1: ${s1.toString()} s2: ${s2.toString()} other: ${other.toString()}`
+        );
+      }
+    }
   }
 }

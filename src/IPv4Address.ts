@@ -15,6 +15,7 @@ import { AddressValueError } from "./AddressValueError";
 import { _BaseAddressStruct } from "./_BaseAddress";
 import { _BaseV4Struct } from "./_BaseV4";
 import { _IPAddressBaseStruct } from "./_IPAddressBase";
+import { _IPv4Constants } from "./_IPv4Constants";
 
 /**
  * Represent and manipulate single IPv4 Addresses.
@@ -32,6 +33,7 @@ export class IPv4Address {
   static readonly _version = 4;
   static readonly _ALL_ONES = IPv4ALLONES;
   static readonly _maxPrefixlen = IPv4LENGTH;
+  static readonly _constants = _IPv4Constants;
   static _netmaskCache: Record<NetmaskCacheKey, NetmaskCacheValue> = {};
   _ip: number;
 

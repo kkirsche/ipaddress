@@ -14,6 +14,7 @@ import { IPv4Address } from "./IPv4Address";
 import { _BaseNetworkStruct } from "./_BaseNetwork";
 import { _BaseV4Struct } from "./_BaseV4";
 import { _IPAddressBaseStruct } from "./_IPAddressBase";
+import { _IPv4Constants } from "./_IPv4Constants";
 import { isBigInt } from "./typeGuards";
 
 // extends _BaseV4, _BaseNetwork
@@ -21,6 +22,7 @@ export class IPv4Network {
   static readonly _version = 4;
   static readonly _ALL_ONES = IPv4ALLONES;
   static readonly _maxPrefixlen = IPv4LENGTH;
+  static readonly _constants = _IPv4Constants;
   static _netmaskCache: Record<NetmaskCacheKey, NetmaskCacheValue> = {};
   static readonly _addressClass = IPv4Address;
 
@@ -194,6 +196,12 @@ export class IPv4Network {
   toString(this: IPv4Network): string {
     return _BaseNetworkStruct.toString(this);
   }
+  /**
+   * Generate iterator over usable hosts in a network.
+   *
+   * This is a like iterate except it doesn't return the network
+   * or broadcast addresses.
+   */
   *hosts(this: IPv4Network): Generator<IPv4Address> {
     yield* _BaseNetworkStruct.hosts(IPv4Network, this);
   }
@@ -212,6 +220,11 @@ export class IPv4Network {
   contains(this: IPv4Network, other: IPv4Address): boolean {
     return _BaseNetworkStruct.contains(this, other);
   }
+  /**
+   * Tell if this is partly contained in other
+   * @param other The other network
+   * @returns {boolean} true if contained, false otherwise.
+   */
   overlaps(this: IPv4Network, other: IPv4Network): boolean {
     return _BaseNetworkStruct.overlaps(this, other);
   }
@@ -237,17 +250,20 @@ export class IPv4Network {
   get prefixlen(): number {
     return _BaseNetworkStruct.prefixlen(this);
   }
+  *addressExclude(this: IPv4Network, other: IPv4Network) {
+    yield* _BaseNetworkStruct.addressExclude(IPv4Network, this, other);
+  }
   compareNetworks(other: IPv4Network): 1 | 0 | -1 {
     return _BaseNetworkStruct.compareNetworks(this, other);
   }
-  _getNetworksKey(): [IPVersion, IPv4Address, IPv4Address] {
+  getNetworksKey(): [IPVersion, IPv4Address, IPv4Address] {
     return _BaseNetworkStruct._getNetworksKey(this);
   }
   *subnets(
     this: IPv4Network,
     prefixlenDiff = 1,
     newPrefix: number | null = null
-  ): Generator<IPv4Network> {
+  ) {
     yield* _BaseNetworkStruct.subnets(
       IPv4Network,
       this,
@@ -282,7 +298,7 @@ export class IPv4Network {
   /**
    * Make a [netmask, prefixlen] tuple from the given argument.
    * @param arg Argument can be:
-   * - an integer (the prefix length)
+   *  * - an integer (the prefix length)
    * - a string representing the prefix length (e.g. "24")
    * - a string representing the prefix netmask (e.g. "255.255.255.0")
    * @returns {NetmaskCacheValue} The [netmask, prefixlen] tuple.
