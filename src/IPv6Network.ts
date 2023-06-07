@@ -28,7 +28,7 @@ export class IPv6Network {
   netmask: IPv6Address;
   _prefixlen: number;
 
-  constructor(address: string) {
+  constructor(address: UnparsedIPv6Network, strict = true) {
     this.networkAddress = new IPv6Address(address);
     this.netmask = new IPv6Address(address);
     this._prefixlen = -1;
