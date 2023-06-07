@@ -217,3 +217,13 @@ export function _countRighthandZeroBits(
   ).length;
   return Math.min(bits, calculated);
 }
+
+// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Set#implementing_basic_set_operations
+export function isSuperset<S extends Iterable<S>>(set: Set<S>, subset: S) {
+  for (const elem of subset) {
+    if (!set.has(elem)) {
+      return false;
+    }
+  }
+  return true;
+}

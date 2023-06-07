@@ -1,4 +1,5 @@
 import { IPv4Address } from "./IPv4Address";
+import { IPv6Address } from "./IPv6Address";
 
 export type IPVersion = 4 | 6;
 export type Prefixlen = number;
@@ -17,7 +18,8 @@ export type ByteOrder = "big" | "little";
 export type ByteArray = number[];
 
 export type NetmaskCacheKey = string | number;
-export type NetmaskCacheValue = [IPv4Address, Prefixlen];
+export type V4NetmaskCacheValue = [IPv4Address, Prefixlen];
+export type V6NetmaskCacheValue = [IPv6Address, Prefixlen];
 export type Netmask = {
   netmask: IPv4Address;
   prefixlen: number;

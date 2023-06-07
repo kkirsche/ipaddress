@@ -4,22 +4,29 @@ import {
   IPv4LENGTH,
   IPv6LENGTH,
   NetmaskCacheKey,
-  NetmaskCacheValue,
   Prefixlen,
+  V4NetmaskCacheValue,
 } from "./constants";
 
 import { IPv4Address } from "./IPv4Address";
 import { IPv4Network } from "./IPv4Network";
+import { IPv6Address } from "./IPv6Address";
 import { _IPAddressBaseT } from "./_IPAddressBase";
 
 export type IPv4AddressClass = typeof IPv4Address;
 export type IPv4AddressInstance = IPv4Address;
 
+export type IPv6AddressClass = typeof IPv6Address;
+export type IPv6AddressInstance = IPv6Address;
+
 export type AddressClass = IPv4AddressClass;
 export type AddressInstance = IPv4AddressInstance;
 
-export type NetworkClass = typeof IPv4Network;
-export type NetworkInstance = IPv4Network;
+export type IPv4NetworkClass = typeof IPv4Network;
+export type IPv4NetworkInstance = IPv4Network;
+
+export type NetworkClass = IPv4NetworkClass;
+export type NetworkInstance = IPv4NetworkInstance;
 
 export interface HasNetworkAddress {
   networkAddress: IPv4Address;
@@ -95,7 +102,7 @@ export interface SupportsOctetParsing {
 
 export interface Netmaskable {
   maxPrefixlen: typeof IPv4LENGTH | typeof IPv6LENGTH;
-  _netmaskCache: Record<NetmaskCacheKey, NetmaskCacheValue>;
+  _netmaskCache: Record<NetmaskCacheKey, V4NetmaskCacheValue>;
   _prefixFromPrefixString: (prefixlenStr: string) => Prefixlen;
   _prefixFromIpString: (ipStr: string) => Prefixlen;
   _ipIntFromPrefix: (prefixlen: Prefixlen) => IPInteger;

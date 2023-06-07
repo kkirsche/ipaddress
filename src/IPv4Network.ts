@@ -4,10 +4,10 @@ import {
   IPv4ALLONES,
   IPv4LENGTH,
   NetmaskCacheKey,
-  NetmaskCacheValue,
   Prefixlen,
   UnparsedIPv4Address,
   UnparsedIPv4Network,
+  V4NetmaskCacheValue,
 } from "./constants";
 
 import { IPv4Address } from "./IPv4Address";
@@ -23,7 +23,7 @@ export class IPv4Network {
   static readonly _ALL_ONES = IPv4ALLONES;
   static readonly _maxPrefixlen = IPv4LENGTH;
   static readonly _constants = _IPv4Constants;
-  static _netmaskCache: Record<NetmaskCacheKey, NetmaskCacheValue> = {};
+  static _netmaskCache: Record<NetmaskCacheKey, V4NetmaskCacheValue> = {};
   static readonly _addressClass = IPv4Address;
 
   networkAddress: IPv4Address;
@@ -421,7 +421,7 @@ export class IPv4Network {
    * - a string representing the prefix netmask (e.g. "255.255.255.0")
    * @returns {NetmaskCacheValue} The [netmask, prefixlen] tuple.
    */
-  static _makeNetmask(arg: string | Prefixlen): NetmaskCacheValue {
+  static _makeNetmask(arg: string | Prefixlen): V4NetmaskCacheValue {
     return _BaseV4Struct._makeNetmask(IPv4Address, arg);
   }
 

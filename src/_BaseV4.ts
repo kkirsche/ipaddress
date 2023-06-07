@@ -1,48 +1,18 @@
-import { AddressClass, NetworkClass, Stringable } from "./interfaces";
-import {
-  IPv4ALLONES,
-  IPv4LENGTH,
-  NetmaskCacheKey,
-  NetmaskCacheValue,
-} from "./constants";
+import { IPv4AddressClass, IPv4NetworkClass, Stringable } from "./interfaces";
 import { intFromBytes, intToBytes, strIsAscii, strIsDigit } from "./utilities";
 import { isNumber, isUndefined } from "./typeGuards";
 
 import { AddressValueError } from "./AddressValueError";
 import { IPv4Address } from "./IPv4Address";
 import { NetmaskValueError } from "./NetmaskValueError";
-
-/**
- * Base IPv4 object.
- * The following methods are used by IPv4 objects in both single IP
- * addresses and networks.
- */
-export interface _BaseV4T {
-  new (): _BaseV4TInstance;
-  _version: 4; // 4
-  _ALL_ONES: typeof IPv4ALLONES;
-  _maxPrefixlen: typeof IPv4LENGTH;
-  _netmaskCache: Record<NetmaskCacheKey, NetmaskCacheValue>;
-  _makeNetmask: (arg: NetmaskCacheKey) => NetmaskCacheValue;
-  _ipIntFromString: (ipStr: string) => number;
-  _parseOctet: (octetStr: string) => number;
-  _stringFromIpInt: (ipInt: number) => string;
-}
-
-export interface _BaseV4TInstance {
-  _explodeShorthandIpString: () => string;
-  _reversePointer: () => string;
-  // property
-  maxPrefixlen: _BaseV4T["_maxPrefixlen"];
-  version: _BaseV4T["_version"];
-}
+import { V4NetmaskCacheValue } from "./constants";
 
 export const _BaseV4Struct = {
   _explodeShorthandIpString: (obj: Stringable) => obj.toString(),
   _makeNetmask: (
-    cls: AddressClass | NetworkClass,
+    cls: IPv4AddressClass | IPv4NetworkClass,
     arg: string | number
-  ): NetmaskCacheValue => {
+  ): V4NetmaskCacheValue => {
     let prefixlen: number;
     if (cls._netmaskCache[arg] === undefined) {
       if (isNumber(arg)) {
@@ -77,7 +47,7 @@ export const _BaseV4Struct = {
    * @throws {AddressTypeError} If `address` isn't a valid IPv4 address.
    */
   _ipIntFromString: (
-    cls: AddressClass | NetworkClass,
+    cls: IPv4AddressClass | IPv4NetworkClass,
     ipStr: string
   ): number => {
     if (ipStr === "") {
