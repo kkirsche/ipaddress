@@ -285,4 +285,17 @@ export const _BaseV6Struct = {
       .replace(":", ".");
     return `${reverseChars.split("").join(".")}.ip6.arpa`;
   },
+  _splitScopeId: (ipStr: string): [string, string | null] => {
+    const parts = ipStr.split("%");
+    let addr = parts[0];
+    let sep = ipStr.includes("%");
+    let scopeId = parts[1] || null;
+
+    if (!sep) {
+      scopeId = null;
+    } else if (isNull(scopeId) || scopeId.includes("%")) {
+      throw new AddressValueError(`Invalid IPv6 address: '${ipStr}'`);
+    }
+    return [addr, scopeId];
+  },
 };

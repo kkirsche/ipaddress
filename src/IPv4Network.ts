@@ -11,6 +11,7 @@ import {
 } from "./constants";
 
 import { IPv4Address } from "./IPv4Address";
+import { IPv6Address } from "./IPv6Address";
 import { _BaseNetworkStruct } from "./_BaseNetwork";
 import { _BaseV4Struct } from "./_BaseV4";
 import { _IPAddressBaseStruct } from "./_IPAddressBase";
@@ -209,7 +210,11 @@ export class IPv4Network {
     yield* _BaseNetworkStruct.iterate(IPv4Network, this);
   }
   getItem(this: IPv4Network, n: number): IPv4Address {
-    return _BaseNetworkStruct.getItem(IPv4Network, this, n);
+    const result = _BaseNetworkStruct.getItem(IPv4Network, this, n);
+    if (result instanceof IPv6Address) {
+      throw new Error("Unexpected IPv6 address in IPv4 network.");
+    }
+    return result;
   }
   lessThan(this: IPv4Network, other: IPv4Network): boolean {
     return _BaseNetworkStruct.lessThan(this, other);
@@ -229,11 +234,19 @@ export class IPv4Network {
     return _BaseNetworkStruct.overlaps(this, other);
   }
   get broadcastAddress(): IPv4Address {
-    return _BaseNetworkStruct.broadcastAddress(IPv4Network, this);
+    const result = _BaseNetworkStruct.broadcastAddress(IPv4Network, this);
+    if (result instanceof IPv6Address) {
+      throw new Error("Unexpected IPv6 address in IPv6 network");
+    }
+    return result;
   }
   // https://github.com/python/cpython/blob/eb0ce92141cd14196a8922cfe9df4a713c5c1d9b/Lib/ipaddress.py#L764
   get hostmask(): IPv4Address {
-    return _BaseNetworkStruct.hostmask(IPv4Network, this);
+    const result = _BaseNetworkStruct.hostmask(IPv4Network, this);
+    if (result instanceof IPv6Address) {
+      throw new Error("Unexpected IPv6 address in IPv6 network");
+    }
+    return result;
   }
   get withPrefixlen(): string {
     return _BaseNetworkStruct.withPrefixlen(this);
@@ -471,7 +484,7 @@ export class IPv4Network {
   _reversePointer(this: IPv4Network): string {
     return _BaseV4Struct._reversePointer(this);
   }
-  get maxPrefixlen(): 32 {
+  get maxPrefixlen() {
     return IPv4Network._maxPrefixlen;
   }
   get version(): 4 {

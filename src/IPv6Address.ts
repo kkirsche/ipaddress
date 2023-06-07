@@ -140,6 +140,7 @@ export class IPv6Address {
   }
 
   // END: _IPAddressBase
+  // BEGIN: _BaseV6
 
   /**
    * Make a [netmask, prefixLen] tuple from the given argument.
@@ -215,4 +216,25 @@ export class IPv6Address {
   _reversePointer(this: IPv6Address): string {
     return _BaseV6Struct._reversePointer(this);
   }
+
+  /**
+   * Helper function to parse IPv6 string address scope id.
+   *
+   * See RFC 4007 for details.
+   * @param ipStr A string, the IPv6 address.
+   * @returns {[string, string | null]} [addr, scopeId] tuple.
+   */
+  static _splitScopeId(ipStr: string): [string, string | null] {
+    return _BaseV6Struct._splitScopeId(ipStr);
+  }
+
+  get maxPrefixlen() {
+    return IPv6Address._maxPrefixlen;
+  }
+
+  get version(): 6 {
+    return IPv6Address._version;
+  }
+
+  // END: _BaseV6
 }

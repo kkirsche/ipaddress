@@ -12,6 +12,8 @@ import { IPv4Address } from "./IPv4Address";
 import { IPv4Interface } from "./IPv4Interface";
 import { IPv4Network } from "./IPv4Network";
 import { IPv6Address } from "./IPv6Address";
+import { IPv6Interface } from "./IPv6Interface";
+import { IPv6Network } from "./IPv6Network";
 import { _IPAddressBaseT } from "./_IPAddressBase";
 
 export type IPv4AddressClass = typeof IPv4Address;
@@ -26,11 +28,20 @@ export type AddressInstance = IPv4AddressInstance | IPv6AddressInstance;
 export type IPv4NetworkClass = typeof IPv4Network;
 export type IPv4NetworkInstance = IPv4Network;
 
-export type NetworkClass = IPv4NetworkClass;
-export type NetworkInstance = IPv4NetworkInstance;
+export type IPv6NetworkClass = typeof IPv6Network;
+export type IPv6NetworkInstance = IPv6Network;
+
+export type NetworkClass = IPv4NetworkClass | IPv6NetworkClass;
+export type NetworkInstance = IPv4NetworkInstance | IPv6NetworkInstance;
 
 export type IPv4InterfaceClass = typeof IPv4Interface;
 export type IPv4InterfaceInstance = IPv4Interface;
+
+export type IPv6InterfaceClass = typeof IPv6Interface;
+export type IPv6InterfaceInstance = IPv6Interface;
+
+export type InterfaceClass = IPv4InterfaceClass | IPv6InterfaceClass;
+export type InterfaceInstance = IPv4InterfaceInstance | IPv6InterfaceInstance;
 
 export type IPv4Class =
   | IPv4AddressClass
@@ -41,8 +52,14 @@ export type IPv4Instance =
   | IPv4NetworkInstance
   | IPv4InterfaceInstance;
 
-export type IPv6Class = IPv6AddressClass;
-export type IPv6Instance = IPv6AddressInstance;
+export type IPv6Class =
+  | IPv6AddressClass
+  | IPv6NetworkClass
+  | IPv6InterfaceClass;
+export type IPv6Instance =
+  | IPv6AddressInstance
+  | IPv6NetworkInstance
+  | IPv6InterfaceInstance;
 
 export interface HasNetworkAddress {
   networkAddress: IPv4Address;

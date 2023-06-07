@@ -7,7 +7,6 @@ import {
 import { IPInteger, IPVersion, Netmask } from "./constants";
 
 import { IPv4Address } from "./IPv4Address";
-import { IPv4Network } from "./IPv4Network";
 import { _BaseConstants } from "./_BaseConstants";
 import { _IPAddressBaseT } from "./_IPAddressBase";
 import { isNull } from "./typeGuards";
@@ -85,7 +84,11 @@ export const _BaseNetworkStruct = {
   },
   hosts,
   iterate: hosts,
-  getItem: (cls: NetworkClass, obj: NetworkInstance, n: number) => {
+  getItem: <C extends NetworkClass>(
+    cls: C,
+    obj: NetworkInstance,
+    n: number
+  ) => {
     const network = obj.networkAddress.toNumber();
     const broadcast = obj.broadcastAddress.toNumber();
     if (n >= 0) {
@@ -203,18 +206,18 @@ export const _BaseNetworkStruct = {
     }
     return 0;
   },
-  _getNetworksKey: (
-    obj: NetworkInstance
-  ): [IPVersion, AddressInstance, AddressInstance] => {
+  _getNetworksKey: <O extends NetworkInstance>(
+    obj: O
+  ): [IPVersion, O["networkAddress"], O["netmask"]] => {
     return [obj.version, obj.networkAddress, obj.netmask];
   },
   subnets,
-  supernet: (
-    cls: NetworkClass,
-    obj: NetworkInstance,
+  supernet: <C extends NetworkClass, O extends NetworkInstance>(
+    cls: C,
+    obj: O,
     prefixlenDiff = 1,
     newPrefix: number | null = null
-  ): IPv4Network => {
+  ): O => {
     if (obj._prefixlen === 0) {
       return obj;
     }
@@ -282,12 +285,12 @@ export const _BaseNetworkStruct = {
   },
 };
 
-function* subnets(
-  cls: NetworkClass,
-  obj: NetworkInstance,
+function* subnets<C extends NetworkClass, O extends NetworkInstance>(
+  cls: C,
+  obj: O,
   prefixlenDiff = 1,
   newPrefix: number | null = null
-) {
+): Generator<O, O> {
   if (obj._prefixlen === obj.maxPrefixlen) {
     yield obj;
     return obj;
@@ -326,11 +329,11 @@ function* subnets(
   return subnets;
 }
 
-function* addressExclude<T extends NetworkClass>(
+function* addressExclude<T extends NetworkClass, O extends NetworkInstance>(
   cls: T,
-  obj: NetworkInstance,
+  obj: O,
   other: NetworkInstance
-) {
+): Generator<O, null | undefined> {
   if (obj.version !== other.version) {
     throw new Error(
       `${obj.toString()} and ${other.toString()} are not of the same version`
