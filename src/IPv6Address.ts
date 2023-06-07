@@ -185,10 +185,10 @@ export class IPv6Address {
 
   // END: _IPAddressBase
   // BEGIN: _BaseAddress
-  toNumber(this: IPv6Address): number {
+  toNumber(this: IPv6Address): bigint {
     const result = _BaseAddressStruct.toNumber(this);
-    if (isBigInt(result)) {
-      throw new Error("Unexpected bigint in toNumber");
+    if (isNumber(result)) {
+      throw new Error("Unexpected number in toNumber");
     }
     return result;
   }

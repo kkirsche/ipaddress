@@ -22,6 +22,8 @@ export class IPv6Network {
   static readonly _ALL_ONES = IPv6ALLONES;
   static readonly _maxPrefixlen = IPv6LENGTH;
   static _netmaskCache: Record<NetmaskCacheKey, V6NetmaskCacheValue> = {};
+
+  // class to use when creating address objects
   static readonly _addressClass = IPv6Address;
 
   networkAddress: IPv6Address;
@@ -29,9 +31,19 @@ export class IPv6Network {
   _prefixlen: number;
 
   constructor(address: UnparsedIPv6Network, strict = true) {
-    this.networkAddress = new IPv6Address(address);
-    this.netmask = new IPv6Address(address);
-    this._prefixlen = -1;
+    const [addr, mask] = IPv6Network._splitAddrPrefix(address);
+    this.networkAddress = new IPv6Address(addr);
+    const [_mask, _prefix] = IPv6Network._makeNetmask(mask);
+    this.netmask = _mask;
+    this._prefixlen = _prefix;
+    const packed = this.networkAddress.toNumber();
+    if ((packed & this.netmask.toNumber()) !== packed) {
+      if (strict) {
+        throw new Error(`${this.toString()} has host bits set`);
+      } else {
+        this.networkAddress = new IPv6Address(packed & this.netmask.toNumber());
+      }
+    }
   }
 
   // BEGIN: _IPAddressBase
