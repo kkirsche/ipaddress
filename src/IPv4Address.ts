@@ -8,7 +8,7 @@ import {
   Prefixlen,
   UnparsedIPv4Address,
 } from "./constants";
-import { intFromBytes, isSafeNumber } from "./utilities";
+import { intFromBytes, isSafeNumber, v4IntToPacked } from "./utilities";
 import { isBigInt, isNumber } from "./typeGuards";
 
 import { AddressValueError } from "./AddressValueError";
@@ -87,6 +87,13 @@ export class IPv4Address {
     }
 
     this._ip = IPv4Address._ipIntFromString(address);
+  }
+
+  /**
+   * @returns {ByteArray} The binary representation of this address.
+   */
+  get packed(): ByteArray {
+    return v4IntToPacked(this._ip);
   }
 
   // BEGIN: _IPAddressBase

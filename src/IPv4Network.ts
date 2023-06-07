@@ -244,26 +244,117 @@ export class IPv4Network {
   get withHostmask(): string {
     return _BaseNetworkStruct.withHostmask(this);
   }
+  /**
+   * Number of hosts in the current subnet.
+   */
   get numAddresses(): number {
     return _BaseNetworkStruct.numAddresses(this);
   }
   get prefixlen(): number {
     return _BaseNetworkStruct.prefixlen(this);
   }
-  *addressExclude(this: IPv4Network, other: IPv4Network) {
+  /**
+   * Remove an address from a larger block.
+   *
+   * For example:
+   *
+   * const addr1 = ipNetwork("192.0.2.0/28")
+   * const addr2 = ipNetwork("192.0.2.1/32")
+   * const addrIter = addr1.addressExclude(addr2)
+   *
+   * addrIter will then produce:
+   * [
+   *    IPv4Network("192.0.2.0/32"), IPv4Network("192.0.2.2/31"),
+   *    IPv4Network("192.0.2.4/30"), IPv4Network("192.0.2.8/39")
+   * ]
+   *
+   * or via IPv6:
+   *
+   * const addr1 = ipNetwork("2001:db8::1/32")
+   * const addr2 = ipNetwork("2001:db8::1/128")
+   * const addrIter = addr1.addressExclude(addr2)
+   *
+   * addrIter will then produce:
+   * [
+   *    IPv6Network("2001:db8::1/128"),
+   *    IPv6Network("2001:db8::2/127"),
+   *    IPv6Network("2001:db8::4/126"),
+   *    IPv6Network("2001:db8::8/125"),
+   *    ...
+   *    IPv6Network("2001:db8:8000::/33")
+   * ]
+   *
+   * @param other An IPv4Network object of the same type.
+   * @returns {Generator<IPv4Network, void>} An iterator of the IPv4Network objects
+   * which is this minus other.
+   * @throws {Error} If this and other are of differing address versions, or if other
+   * is not a network object.
+   * @throws {Error} If other is not completely contained by this.
+   */
+  *addressExclude(
+    this: IPv4Network,
+    other: IPv4Network
+  ): Generator<IPv4Network, void> {
     yield* _BaseNetworkStruct.addressExclude(IPv4Network, this, other);
   }
-  compareNetworks(other: IPv4Network): 1 | 0 | -1 {
+  /**
+   * Compare two IP objects.
+   *
+   * This is only concerned about the comparison of the integer
+   * representation of the network addresses. This means that the
+   * host bits aren't considered at all in this method. If you want
+   * to compare host bits, you can easily enough do a
+   * 'HostA._ip < HostB._ip'
+   * @param other An IP object.
+   * @returns {1 | 0 | -1} If the IP versions of this and other are the same, returns:
+   *
+   * -1 if (this.lessThan(other)):
+   *    eg: IPv4Network("192.0.2.0/25") < IPv4Network("192.0.2.128"/25)
+   *    IPv6Network("2001:db8::1000/124") < IPv6Network("2001:db8::2000/124")
+   *
+   *  0 if (this.equals(other)):
+   *    eg: IPv4Network("192.0.2.0/24") == IPv4Network("192.0.2.0/24")
+   *    IPv6Network("2001:db8::1000/124") == IPv6Network("2001:db8::1000/124")
+   *
+   *  1 if (other.lessThan(this)):
+   *    eg: IPv4Network("192.0.2.128/25") > IPv4Network("192.0.2.0/25")
+   *    IPv6Network("2001:db8::2000/124") > IPv6Network("2001:db8::1000/124")
+   *  @throws {Error} if the IP versions are different.
+   */
+  compareNetworks(this: IPv4Network, other: IPv4Network): 1 | 0 | -1 {
     return _BaseNetworkStruct.compareNetworks(this, other);
   }
+  /**
+   * Network-only key function.
+   *
+   * @returns {[IPVersion, IPv4Address, IPv4Address]} Returns an object that identifies
+   * this address' network and netmask. This function is a suitable "key" argument for
+   * sorting.
+   */
   getNetworksKey(): [IPVersion, IPv4Address, IPv4Address] {
     return _BaseNetworkStruct._getNetworksKey(this);
   }
+  /**
+   * The subnets which join to make the current subnet.
+   *
+   * In the case that this contains only one IP
+   * (this._prefixlen === 32 for IPv4 or this._prefixlen === 128 for IPv6),
+   * yield an iterator with just ourself.
+   * @param prefixlenDiff An integer, the amount the prefix length
+   * should be increased by. This should not be set if newPrefix is also set.
+   * @param newPrefix The desired new prefix length. This must be a larger number
+   * (smaller prefix) than the existing prefix. This should not be set if prefixlenDiff
+   * is also set.
+   * @returns {Generator<IPv4Network, void>} An iterator of IPv4 objects.
+   * @throws {Error} The prefixlenDiff is too small or too large.
+   * @throws {Error} prefixlenDiff and newPrefix are both set or newPrefix is a
+   * smaller number than the current prefix (smaller number means a larger network).
+   */
   *subnets(
     this: IPv4Network,
     prefixlenDiff = 1,
     newPrefix: number | null = null
-  ) {
+  ): Generator<IPv4Network, void> {
     yield* _BaseNetworkStruct.subnets(
       IPv4Network,
       this,
@@ -271,7 +362,26 @@ export class IPv4Network {
       newPrefix
     );
   }
-  supernet(prefixlenDiff = 1, newPrefix: number | null = null): IPv4Network {
+  /**
+   * The supernet containing the current network.
+   * @param prefixlenDiff An integer, the amount the prefix length of the network
+   * should be decreased by. For example, given a /24 network and a prefixlenDiff
+   * of 3, a supernet with a /21 netmask is returned.
+   * @param newPrefix The desired new prefix length. This must be a smaller number
+   * (larger prefix) than the existing prefix. This should not be set if prefixlenDiff
+   * is also set.
+   * @param newPrefix Not documented?
+   * @returns {IPv4Network} An IPv4Network object.
+   * @throws {Error} If this.prefixlen - prefixlenDiff < 0. I.e., you have a negative
+   * prefix length.
+   * @throws {Error} If prefixlenDiff and newPrefix are both set or newPrefix is a
+   * larger number than the current prefix (larger number means a smaller network).
+   */
+  supernet(
+    this: IPv4Network,
+    prefixlenDiff = 1,
+    newPrefix: number | null = null
+  ): IPv4Network {
     return _BaseNetworkStruct.supernet(
       IPv4Network,
       this,
@@ -282,9 +392,17 @@ export class IPv4Network {
   static _isSubnetOf(a: IPv4Network, b: IPv4Network): boolean {
     return _BaseNetworkStruct._isSubnetOf(a, b);
   }
+  /**
+   * @param other the other network
+   * @returns {boolean} true if this network is a subnet of other.
+   */
   subnetOf(this: IPv4Network, other: IPv4Network): boolean {
     return _BaseNetworkStruct.subnetOf(IPv4Network, this, other);
   }
+  /**
+   * @param other the other network
+   * @returns {boolean} true if this network is a supernet of other.
+   */
   supernetOf(this: IPv4Network, other: IPv4Network): boolean {
     return _BaseNetworkStruct.supernetOf(IPv4Network, this, other);
   }
@@ -360,4 +478,15 @@ export class IPv4Network {
     return IPv4Network._version;
   }
   // END: _BaseV4
+
+  get isGlobal(): boolean {
+    const validNetAddr = !_IPv4Constants._publicNetwork.contains(
+      this.networkAddress
+    );
+    const validBroadcast = _IPv4Constants._publicNetwork.contains(
+      this.broadcastAddress
+    );
+    // @ts-expect-error this is broken until we finish adding isPrivate
+    return validNetAddr && validBroadcast && !this.isPrivate;
+  }
 }
