@@ -1,10 +1,12 @@
+import { IPv6AddressClass, IPv6Class, IPv6Instance } from "./interfaces";
 import { NetmaskCacheKey, V6NetmaskCacheValue } from "./constants";
-import { isNull, isNumber } from "./typeGuards";
+import { isBigInt, isNull, isNumber } from "./typeGuards";
 
 import { AddressValueError } from "./AddressValueError";
 import { IPv4Address } from "./IPv4Address";
 import { IPv6Address } from "./IPv6Address";
-import { IPv6AddressClass } from "./interfaces";
+import { IPv6Interface } from "./IPv6Interface";
+import { IPv6Network } from "./IPv6Network";
 import { isSuperset } from "./utilities";
 
 export const _BaseV6Struct = {
@@ -17,13 +19,13 @@ export const _BaseV6Struct = {
       if (isNumber(arg)) {
         prefixlen = arg;
         if (!(0 <= prefixlen && prefixlen <= cls._maxPrefixlen)) {
-          cls._reportInvalidNetmask(prefixlen);
+          cls._reportInvalidNetmask(prefixlen.toString(10));
         }
       } else {
         prefixlen = cls._prefixFromPrefixString(arg);
       }
 
-      const netmask = new IPv6Address(cls._ipBigIntFromPrefix(prefixlen));
+      const netmask = new IPv6Address(cls._ipIntFromPrefix(prefixlen));
       cls._netmaskCache[arg] = [netmask, prefixlen];
     }
 
@@ -165,6 +167,7 @@ export const _BaseV6Struct = {
         throw new AddressValueError(`${err.message} in '${ipStr}'`);
       }
     }
+    throw new Error("Unexpected error in _ipBigIntFromString");
   },
   _parseHextet: (cls: IPv6AddressClass, hextetStr: string): number => {
     // Reject non-ascii digits.
@@ -186,7 +189,7 @@ export const _BaseV6Struct = {
     }
     return parsed;
   },
-  _compressHextets: (cls: IPv6AddressClass, hextets: string[]): string[] => {
+  _compressHextets: (hextets: string[]): string[] => {
     let bestDoublecolonStart = -1;
     let bestDoublecolonLen = 0;
     let doublecolonStart = -1;
@@ -221,5 +224,65 @@ export const _BaseV6Struct = {
       }
     }
     return hextets;
+  },
+  _stringFromIpInt: (
+    cls: IPv6AddressClass,
+    ipInt: bigint | null = null
+  ): string => {
+    // @ts-expect-error I don't know why cls._ip has a numeric IP....
+    if (isNull(ipInt) && (isBigInt(cls._ip) || isNumber(cls._ip))) {
+      // @ts-expect-error I don't know why cls._ip has a numeric IP....
+      ipInt = cls._ip;
+    }
+
+    if (isNull(ipInt)) {
+      throw new Error("ipInt cannot be null");
+    }
+
+    if (ipInt > cls._ALL_ONES) {
+      throw new Error("IPv6 Address is too large");
+    }
+
+    const hexStr = `${ipInt.toString(16)}${"0".repeat(32)}`.slice(0, 32);
+    let hextets = [];
+    for (let x = 0; x < 32; x + 4) {
+      const hextet = parseInt(hexStr.slice(x, x + 4), 16).toString(16);
+      hextets.push(hextet);
+    }
+    hextets = cls._compressHextets(hextets);
+    return hextets.join(":");
+  },
+  _explodeShorthandIpString: <C extends IPv6Class, O extends IPv6Instance>(
+    cls: C,
+    obj: O
+  ): string => {
+    let ipStr: string;
+    if (obj instanceof IPv6Network) {
+      ipStr = obj.networkAddress.toString();
+    } else if (obj instanceof IPv6Interface) {
+      ipStr = obj.ip.toString();
+    } else {
+      ipStr = obj.toString();
+    }
+
+    const ipInt = cls._ipBigIntFromString(ipStr);
+    const hexStr = `${ipInt.toString(16)}${"0".repeat(32)}`.slice(0, 32);
+    const parts = [];
+    for (let x = 0; x < 32; x + 4) {
+      const part = hexStr.slice(x, x + 4);
+      parts.push(part);
+    }
+    if (obj instanceof IPv6Interface || obj instanceof IPv6Network) {
+      return `${parts.join(":")}/${obj._prefixlen}`;
+    }
+    return parts.join(":");
+  },
+  _reversePointer: (obj: IPv6Instance): string => {
+    const reverseChars = obj.exploded
+      .split("")
+      .reverse()
+      .join("")
+      .replace(":", ".");
+    return `${reverseChars.split("").join(".")}.ip6.arpa`;
   },
 };

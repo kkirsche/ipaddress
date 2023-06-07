@@ -9,6 +9,7 @@ import {
 } from "./constants";
 
 import { IPv4Address } from "./IPv4Address";
+import { IPv4Interface } from "./IPv4Interface";
 import { IPv4Network } from "./IPv4Network";
 import { IPv6Address } from "./IPv6Address";
 import { _IPAddressBaseT } from "./_IPAddressBase";
@@ -19,14 +20,29 @@ export type IPv4AddressInstance = IPv4Address;
 export type IPv6AddressClass = typeof IPv6Address;
 export type IPv6AddressInstance = IPv6Address;
 
-export type AddressClass = IPv4AddressClass;
-export type AddressInstance = IPv4AddressInstance;
+export type AddressClass = IPv4AddressClass | IPv6AddressClass;
+export type AddressInstance = IPv4AddressInstance | IPv6AddressInstance;
 
 export type IPv4NetworkClass = typeof IPv4Network;
 export type IPv4NetworkInstance = IPv4Network;
 
 export type NetworkClass = IPv4NetworkClass;
 export type NetworkInstance = IPv4NetworkInstance;
+
+export type IPv4InterfaceClass = typeof IPv4Interface;
+export type IPv4InterfaceInstance = IPv4Interface;
+
+export type IPv4Class =
+  | IPv4AddressClass
+  | IPv4NetworkClass
+  | IPv4InterfaceClass;
+export type IPv4Instance =
+  | IPv4AddressInstance
+  | IPv4NetworkInstance
+  | IPv4InterfaceInstance;
+
+export type IPv6Class = IPv6AddressClass;
+export type IPv6Instance = IPv6AddressInstance;
 
 export interface HasNetworkAddress {
   networkAddress: IPv4Address;

@@ -29,11 +29,11 @@ export type UnparsedIPv4Address =
   | string
   | Exclude<IPInteger, IPV6Integer>
   | ByteArray;
-export type UnparsedIPV6Address =
+export type UnparsedIPv6Address =
   | string
   | Exclude<IPInteger, IPV4Integer>
   | ByteArray;
-export type UnparsedAddress = UnparsedIPv4Address | UnparsedIPV6Address;
+export type UnparsedAddress = UnparsedIPv4Address | UnparsedIPv6Address;
 
 export type UnparsedIPv4Network =
   | UnparsedIPv4Address
