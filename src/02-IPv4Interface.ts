@@ -1,6 +1,6 @@
-import { IPv4Address } from "./IPv4Address";
-import { IPv4Network } from "./IPv4Network";
-import { UnparsedIPv4Address } from "./constants";
+import { IPv4Address } from "./01-IPv4Address";
+import { IPv4Network } from "./03-IPv4Network";
+import { UnparsedIPv4Address } from "./interfaces";
 
 export class IPv4Interface extends IPv4Address {
   network: IPv4Network;
@@ -19,17 +19,29 @@ export class IPv4Interface extends IPv4Address {
     return this.network.hostmask;
   }
 
-  toString(this: IPv4Interface): string {
+  toString(): string {
     return `${this._stringFromIpInt(this._ip)}/${this._prefixlen}`;
   }
-  equals(this: IPv4Interface, other: IPv4Interface): boolean {
+  toRepr(): string {
+    return `IPv4Interface('${this.toString()}')`;
+  }
+
+  equals(other: {
+    version: number;
+    _ip: number;
+    network: IPv4Network;
+  }): boolean {
     const addressEqual = super.equals(other);
     if (addressEqual === false) {
       return addressEqual;
     }
     return this.network.equals(other.network);
   }
-  lessThan(this: IPv4Interface, other: IPv4Interface): boolean {
+  lessThan(other: {
+    version: number;
+    _ip: number;
+    network: IPv4Network;
+  }): boolean {
     const addressLess = super.lessThan(other);
     return (
       this.network.lessThan(other.network) ||

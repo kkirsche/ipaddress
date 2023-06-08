@@ -1,6 +1,7 @@
-import { ByteArray, ByteOrder, IPInteger, IPv4LENGTH } from "./constants";
+import { ByteArray, ByteOrder } from "./interfaces";
+import { IPv4ALLONES, IPv6ALLONES } from "./constants";
 
-import { AddressValueError } from "./AddressValueError";
+import { AddressValueError } from "./00-AddressValueError";
 
 /**
  * Check whether a given number or big integer is within the safe integer range.
@@ -123,9 +124,9 @@ export function intFromBytes(
  * or negative.
  * @returns {ByteArray} The packed byte array.
  */
-export function v4IntToPacked(address: IPInteger): ByteArray {
+export function v4IntToPacked(address: number): ByteArray {
   const lowestAddr = 0;
-  const highestAddr = 2 ** IPv4LENGTH - 1;
+  const highestAddr = IPv4ALLONES;
 
   if (highestAddr < address) {
     throw new TypeError("Address too large for IPv4");
@@ -145,10 +146,10 @@ export function v4IntToPacked(address: IPInteger): ByteArray {
  * @returns {ByteArray} The integer address packed as 16 bytes in network (big-endian)
  * order.
  */
-export function v6IntToPacked(address: IPInteger): ByteArray {
+export function v6IntToPacked(address: bigint): ByteArray {
   const lowestAddr = 0;
   // if we don't use big ints here, this will overflow
-  const highestAddr = BigInt(2) ** BigInt(128) - BigInt(1);
+  const highestAddr = IPv6ALLONES;
   if (highestAddr < address) {
     throw new TypeError("Address too large for IPv6");
   }
@@ -205,7 +206,7 @@ export function strIsDigit(c: string): boolean {
  * @returns {number} The number of zero bits on the right hand side of the number.
  */
 export function _countRighthandZeroBits(
-  number: IPInteger,
+  number: bigint | number,
   bits: number
 ): number {
   if (number === 0) {

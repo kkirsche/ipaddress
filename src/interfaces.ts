@@ -21,8 +21,8 @@ export type UnparsedNetwork = UnparsedIPv4Network | UnparsedIPv6Network;
 
 export type NetmaskCacheKey = string | number;
 export type Prefixlen = number;
-export type V4NetmaskCacheValue = [_BaseV4T, Prefixlen];
-export type V6NetmaskCacheValue = [_BaseV6T, Prefixlen];
+export type V4NetmaskCacheValue = [IPv4AddressT, Prefixlen];
+export type V6NetmaskCacheValue = [IPv6AddressT, Prefixlen];
 
 export interface _IPAddressBaseClsT {
   _ipIntFromPrefix:
@@ -63,6 +63,15 @@ export interface _BaseAddressT extends _IPAddressBaseT {
   toRepr: () => string;
   toString: () => string;
   _getAddressKey: () => [4, _BaseAddressT] | [6, _BaseAddressT];
+}
+
+export type _BaseNetworkClsT = _IPAddressBaseClsT;
+export interface _BaseNetworkT extends _IPAddressBaseT {
+  toRepr: () => string;
+  toString: () => string;
+  // hosts: Generator<IPv4AddressT> | Generator<IPv6AddressT>
+  // iterate: Generator<IPv4AddressT> | Generator<IPv6AddressT>
+  getItem: (n: number) => IPv4AddressT | IPv6AddressT;
 }
 
 interface _BaseT {
@@ -119,14 +128,23 @@ export interface IPv4AddressClsT
   ) => [UnparsedIPv4Address, Prefixlen];
 }
 
+type OmittedInAddresses =
+  | "version"
+  | "toNumber"
+  | "_getAddressKey"
+  | "add"
+  | "sub"
+  | "lessThan"
+  | "equals";
+
 export interface IPv4AddressT
   extends _BaseV4T,
-    Omit<
-      _BaseAddressT,
-      "version" | "toNumber" | "_getAddressKey" | "add" | "sub"
-    > {
+    Omit<_BaseAddressT, OmittedInAddresses> {
+  _ip: number;
   _checkIntAddress: (address: number) => void;
   toNumber: () => number;
+  equals: (other: IPv4AddressT) => boolean;
+  lessThan: (other: IPv4AddressT) => boolean;
   _getAddressKey: () => [4, IPv4AddressT];
   add: (other: IPv4AddressT) => number;
   sub: (other: IPv4AddressT) => number;
@@ -143,14 +161,13 @@ export interface IPv6AddressClsT
 
 export interface IPv6AddressT
   extends _BaseV6T,
-    Omit<
-      _BaseAddressT,
-      "version" | "toNumber" | "equals" | "_getAddressKey" | "add" | "sub"
-    > {
+    Omit<_BaseAddressT, OmittedInAddresses> {
+  _ip: bigint;
   _scopeId: string | null;
   _checkIntAddress: (address: bigint) => void;
   toNumber: () => bigint;
   equals: (other: IPv6AddressT) => boolean;
+  lessThan: (other: IPv6AddressT) => boolean;
   _getAddressKey: () => [6, IPv6AddressT];
   add: (other: IPv6AddressT) => bigint;
   sub: (other: IPv6AddressT) => bigint;
@@ -158,3 +175,20 @@ export interface IPv6AddressT
 
 export type IPvAnyAddressClsT = IPv4AddressClsT | IPv6AddressClsT;
 export type IPvAnyAddressT = IPv4AddressT | IPv6AddressT;
+
+export interface IPv4NetworkClsT extends _BaseV4ClsT, _BaseNetworkClsT {}
+export interface IPv4NetworkT extends _BaseV4T, Omit<_BaseNetworkT, "version"> {
+  networkAddress: IPv4AddressT;
+  netmask: IPv4AddressT;
+  _prefixlen: number;
+}
+
+export interface IPv6NetworkClsT extends _BaseV6ClsT, _BaseNetworkClsT {}
+export interface IPv6NetworkT extends _BaseV6T, Omit<_BaseNetworkT, "version"> {
+  networkAddress: IPv6AddressT;
+  netmask: IPv6AddressT;
+  _prefixlen: number;
+}
+
+export type IPvAnyNetworkClsT = IPv4NetworkClsT | IPv6NetworkClsT;
+export type IPvAnyNetworkT = IPv4NetworkT | IPv6NetworkT;

@@ -1,34 +1,36 @@
+import { ByteArray, Prefixlen, UnparsedIPv6Address } from "./interfaces";
+import { IPv6ALLONES, IPv6LENGTH } from "./constants";
 import {
-  ByteArray,
-  IPv6AddressT,
-  UnparsedIPv6Address,
-  V6NetmaskCacheValue,
-  _BaseAddressT,
-} from "./interfaces";
+  _countRighthandZeroBits,
+  _splitOptionalNetmask,
+  intFromBytes,
+  intToBytes,
+  isSafeNumber,
+  isSuperset,
+  strIsAscii,
+  strIsDigit,
+  v6IntToPacked,
+} from "./utilities";
 import {
-  IPInteger,
-  IPv6ALLONES,
-  IPv6LENGTH,
-  NetmaskCacheKey,
-  Prefixlen,
-} from "./constants";
-import { intFromBytes, isSafeNumber, v6IntToPacked } from "./utilities";
-import { isBigInt, isByteArray, isNull, isNumber } from "./typeGuards";
+  isBigInt,
+  isByteArray,
+  isNull,
+  isNumber,
+  isString,
+} from "./typeGuards";
 
-import { AddressValueError } from "./AddressValueError";
-import { IPv4Address } from "./IPv4Address";
-import { _BaseAddressStruct } from "./_BaseAddress";
-import { _BaseV6Struct } from "./_BaseV6";
-import { _IPAddressBaseStruct } from "./_IPAddressBase";
+import { AddressValueError } from "./00-AddressValueError";
+import { IPv4Address } from "./01-IPv4Address";
+import { NetmaskValueError } from "./NetmaskValueError";
 
-export class IPv6Address implements IPv6AddressT {
+export class IPv6Address {
   static readonly _version = 6;
   static readonly _ALL_ONES = IPv6ALLONES;
   static readonly _HEXTET_COUNT = 8;
   static readonly _HEX_DIGITS = new Set("0123456789ABCDEFabcdef");
   static readonly _maxPrefixlen = IPv6LENGTH;
-  static _netmaskCache: Record<NetmaskCacheKey, V6NetmaskCacheValue> = {};
-  _ip: IPInteger; // bigint
+  static _netmaskCache: Record<string | number, [IPv6Address, Prefixlen]> = {};
+  _ip: bigint;
   _scopeId: string | null;
 
   /**
@@ -79,14 +81,14 @@ export class IPv6Address implements IPv6AddressT {
    * Return the longhand version of the IP address as a string.
    */
   get exploded(): string {
-    return _IPAddressBaseStruct.exploded(this);
+    return this._explodeShorthandIpString();
   }
 
   /**
    * Return the shorthand version of the IP address as a string.
    */
   get compressed(): string {
-    return _IPAddressBaseStruct.compressed(this);
+    return this.toString();
   }
 
   /**
@@ -97,11 +99,18 @@ export class IPv6Address implements IPv6AddressT {
    * '1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa'
    */
   get reversePointer(): string {
-    return _IPAddressBaseStruct.reversePointer(this);
+    return this._reversePointer();
   }
 
-  _checkIntAddress(this: IPv6Address, address: bigint): void {
-    return _IPAddressBaseStruct._checkIntAddress(IPv6Address, address);
+  _checkIntAddress(address: bigint): void {
+    if (address < 0) {
+      const msg = `${address} (< 0) is not permitted as an IPv${this.version} address`;
+      throw new AddressValueError(msg);
+    }
+    if (address > IPv6Address._ALL_ONES) {
+      const msg = `${address} (> 2**${this.maxPrefixlen}) is not permitted as an IPv${this.version} address`;
+      throw new AddressValueError(msg);
+    }
   }
 
   _checkPackedAddress(
@@ -109,11 +118,11 @@ export class IPv6Address implements IPv6AddressT {
     address: ByteArray,
     expectedLen: number
   ): void {
-    return _IPAddressBaseStruct._checkPackedAddress(
-      IPv6Address,
-      address,
-      expectedLen
-    );
+    const addressLen = address.length;
+    if (addressLen !== expectedLen) {
+      const msg = `'${address}' (len ${addressLen} != ${expectedLen}) is not permitted as an IPv${this.version} address.`;
+      throw new AddressValueError(msg);
+    }
   }
 
   /**
@@ -122,13 +131,8 @@ export class IPv6Address implements IPv6AddressT {
    * @returns {number} An integer.
    */
   static _ipIntFromPrefix(prefixlen: Prefixlen): bigint {
-    const result = _IPAddressBaseStruct._ipIntFromPrefix(
-      IPv6Address,
-      prefixlen
-    );
-    if (isNumber(result)) {
-      throw new Error("Unexpected number in IPv6 address");
-    }
+    const result =
+      BigInt(this._ALL_ONES) ^ (BigInt(this._ALL_ONES) >> BigInt(prefixlen));
     return result;
   }
 
@@ -138,12 +142,23 @@ export class IPv6Address implements IPv6AddressT {
    * @returns {Prefixlen} An integer, the prefix length.
    * @throws {TypeError} If the input intermingles zeroes & ones.
    */
-  static _prefixFromIpInt(ipInt: IPInteger): Prefixlen {
-    return _IPAddressBaseStruct._prefixFromIpInt(IPv6Address, ipInt);
+  static _prefixFromIpInt(ipInt: bigint): Prefixlen {
+    const trailingZeroes = _countRighthandZeroBits(ipInt, this._maxPrefixlen);
+    const prefixlen = this._maxPrefixlen - trailingZeroes;
+    const leadingOnes = BigInt(ipInt) >> BigInt(trailingZeroes);
+    const allOnes = (BigInt(1) << BigInt(prefixlen)) - BigInt(1);
+    if (leadingOnes !== allOnes) {
+      const byteslen = Math.floor(this._maxPrefixlen / 8);
+      const details = intToBytes(ipInt, byteslen, "big");
+      const msg = `Netmask pattern '${details.toString()}' mixes zeroes & ones`;
+      throw new TypeError(msg);
+    }
+    return prefixlen;
   }
 
   static _reportInvalidNetmask(netmaskStr: string): never {
-    return _IPAddressBaseStruct._reportInvalidNetmask(netmaskStr);
+    const msg = `${netmaskStr} is not a valid netmask`;
+    throw new NetmaskValueError(msg);
   }
 
   /**
@@ -153,10 +168,21 @@ export class IPv6Address implements IPv6AddressT {
    * @throws {NetmaskValueError} If the input is not a valid netmask.
    */
   static _prefixFromPrefixString(prefixlenStr: string): Prefixlen {
-    return _IPAddressBaseStruct._prefixFromPrefixString(
-      IPv6Address,
-      prefixlenStr
-    );
+    // parseInt allows leading +/- as well as surrounding whitespace,
+    // so we ensure that isn't the case
+    if (!(strIsAscii(prefixlenStr) && strIsDigit(prefixlenStr))) {
+      this._reportInvalidNetmask(prefixlenStr);
+    }
+
+    const prefixlen = parseInt(prefixlenStr);
+    if (!Number.isFinite(prefixlen)) {
+      this._reportInvalidNetmask(prefixlenStr);
+    }
+    if (!(0 <= prefixlen && prefixlen <= this._maxPrefixlen)) {
+      this._reportInvalidNetmask(prefixlenStr);
+    }
+
+    return prefixlen;
   }
 
   /**
@@ -166,7 +192,34 @@ export class IPv6Address implements IPv6AddressT {
    * @throws {NetmaskValueError} If the input is not a valid netmask/hostmask;
    */
   static _prefixFromIpString(ipStr: string): Prefixlen {
-    return _IPAddressBaseStruct._prefixFromIpString(IPv6Address, ipStr);
+    // Parse the netmask/hostmask like an IP address.
+    let ipInt = BigInt(-1);
+    try {
+      ipInt = this._ipIntFromString(ipStr);
+    } catch (err: unknown) {
+      if (err instanceof AddressValueError) {
+        this._reportInvalidNetmask(ipStr);
+      }
+    }
+
+    // Try matching a netmask (this would be /1*0*/ as a bitwise regexp).
+    // Note that the two ambiguous cases (all-ones and all-zeroes) are
+    // treated as netmasks.
+    try {
+      return this._prefixFromIpInt(ipInt);
+    } catch (err: unknown) {
+      if (!(err instanceof TypeError)) {
+        throw err;
+      }
+    }
+
+    // Invert the bits, and try matching a /0+1+/ hostmask instead.
+    const inverted = BigInt(ipInt) ^ BigInt(this._ALL_ONES);
+    try {
+      return this._prefixFromIpInt(inverted);
+    } catch (err: unknown) {
+      return this._reportInvalidNetmask(ipStr);
+    }
   }
 
   /**
@@ -177,60 +230,57 @@ export class IPv6Address implements IPv6AddressT {
   static _splitAddrPrefix(
     address: UnparsedIPv6Address
   ): [UnparsedIPv6Address, Prefixlen] {
-    const [_addr, prefixlen] = _IPAddressBaseStruct._splitAddrPrefix(
-      address,
-      IPv6Address._maxPrefixlen
-    );
-    if (isNumber(_addr)) {
-      throw new TypeError("Unexpected number in split addr prefix.");
+    // a packed address or integer
+    if (isBigInt(address) || isByteArray(address)) {
+      return [address, this._maxPrefixlen];
     }
-    return [_addr, prefixlen];
+
+    const addressArray = isString(address)
+      ? _splitOptionalNetmask(address)
+      : address;
+    return [addressArray[0], this._maxPrefixlen];
   }
 
   // END: _IPAddressBase
   // BEGIN: _BaseAddress
-  toNumber(this: IPv6Address): bigint {
-    const result = _BaseAddressStruct.toNumber(this);
-    if (isNumber(result)) {
-      throw new Error("Unexpected number in toNumber");
+  toNumber(): bigint {
+    return this._ip;
+  }
+
+  equals(other: { version: number; _ip: bigint }): boolean {
+    return this.version === other.version && this._ip === other._ip;
+  }
+
+  lessThan(other: { version: number; _ip: bigint }): boolean {
+    if (this.version !== other.version) {
+      throw new TypeError(
+        `${this.toString()} and ${other.toString()} are not of the same version`
+      );
     }
+
+    if (this._ip !== other._ip) {
+      return this._ip < other._ip;
+    }
+
+    return false;
+  }
+
+  add(other: { toNumber: () => bigint }): bigint {
+    const result = this.toNumber() + other.toNumber();
     return result;
   }
 
-  equals(this: IPv6Address, other: IPv6AddressT): boolean {
-    const addressEqual = _BaseAddressStruct.equals(this, other);
-    if (!addressEqual) {
-      return false;
-    }
-    return this._scopeId === other._scopeId;
-  }
-
-  lessThan(this: IPv6Address, other: _BaseAddressT): boolean {
-    return _BaseAddressStruct.lessThan(this, other);
-  }
-
-  add(this: IPv6Address, other: IPv6AddressT): bigint {
-    const result = _BaseAddressStruct.add(this, other);
-    if (isNumber(result)) {
-      throw new Error("Unexpected number in IPv6 addition");
-    }
+  sub(other: { toNumber: () => bigint }): bigint {
+    const result = this.toNumber() - other.toNumber();
     return result;
   }
 
-  sub(this: IPv6Address, other: IPv6AddressT): bigint {
-    const result = _BaseAddressStruct.sub(this, other);
-    if (isNumber(result)) {
-      throw new Error("Unexpected number in IPv6 subtraction");
-    }
-    return result;
-  }
-
-  toRepr(this: IPv6Address): string {
-    return _BaseAddressStruct.toRepr("IPv6Address", this);
+  toRepr(): string {
+    return `IPv6Address('${this.toString()}')`;
   }
 
   toString(this: IPv6Address): string {
-    const ipStr = _BaseAddressStruct.toString(this);
+    const ipStr = IPv6Address._stringFromIpInt(this._ip);
 
     return !isNull(this._scopeId) ? `${ipStr}%${this._scopeId}` : ipStr;
   }
@@ -250,8 +300,23 @@ export class IPv6Address implements IPv6AddressT {
    * - a string representing the prefix length (e.g. "24")
    * - a string representing the prefix length (e.g. "255.255.255.0")
    */
-  static _makeNetmask(arg: NetmaskCacheKey): V6NetmaskCacheValue {
-    return _BaseV6Struct._makeNetmask(IPv6Address, arg);
+  static _makeNetmask(arg: string | Prefixlen): [IPv6Address, Prefixlen] {
+    if (this._netmaskCache[arg] === undefined) {
+      let prefixlen: number;
+      if (isNumber(arg)) {
+        prefixlen = arg;
+        if (!(0 <= prefixlen && prefixlen <= this._maxPrefixlen)) {
+          this._reportInvalidNetmask(prefixlen.toString(10));
+        }
+      } else {
+        prefixlen = this._prefixFromPrefixString(arg);
+      }
+
+      const netmask = new IPv6Address(this._ipIntFromPrefix(prefixlen));
+      this._netmaskCache[arg] = [netmask, prefixlen];
+    }
+
+    return this._netmaskCache[arg];
   }
 
   /**
@@ -261,7 +326,142 @@ export class IPv6Address implements IPv6AddressT {
    * @throws {AddressValueError} if ipStr isn't a valid IPv6 address.
    */
   static _ipIntFromString(ipStr: string): bigint {
-    return _BaseV6Struct._ipIntFromString(IPv6Address, ipStr);
+    if (ipStr.trim().length === 0) {
+      throw new AddressValueError("Address cannot be empty");
+    }
+
+    const parts = ipStr.split(":");
+
+    // An IPv6 address needs at least 2 colons (3 parts).
+    const _minParts = 3;
+
+    if (parts.length < _minParts) {
+      const msg = `At least ${_minParts} expected in '${ipStr}'`;
+      throw new AddressValueError(msg);
+    }
+
+    // If the address has an IPv4-style suffix, convert it to hexadecimal.
+    const lastItem = parts.length - 1;
+    if (parts[lastItem].indexOf(".") !== -1) {
+      let ipv4Int: IPv4Address["_ip"];
+      try {
+        const popped = parts.pop();
+        if (popped === undefined) {
+          throw new Error("Unexpected undefined part");
+        }
+        ipv4Int = new IPv4Address(popped)._ip;
+        parts.push(
+          ((BigInt(ipv4Int) >> BigInt(16)) & BigInt(0xffff)).toString(16)
+        );
+        parts.push((BigInt(ipv4Int) & BigInt(0xffff)).toString(16));
+      } catch (err: unknown) {
+        if (err instanceof AddressValueError) {
+          throw new AddressValueError(`${err.message} in '${ipStr}'`);
+        }
+      }
+    }
+
+    // An IPv6 address can't have more than 8 colons (9 parts).
+    // The extra colon comes from using the "::" notation for a single
+    // leading or trailing zero part.
+    const _maxParts = this._HEXTET_COUNT + 1;
+    if (parts.length > _maxParts) {
+      const msg = `At most ${_maxParts - 1} colons are permitted in '${ipStr}'`;
+      throw new AddressValueError(msg);
+    }
+
+    // Disregarding the endpoints, find "::" with nothing in between.
+    // This indicates that a run of zeroes has been skipped.
+    let skipIndex: number | null = null;
+    for (let i = 1; i < parts.length - 1; i++) {
+      const element = parts[i];
+      if (element.length === 0) {
+        if (!isNull(skipIndex)) {
+          // Can't have more than one "::"
+          const msg = `At most one "::" permitted in '${ipStr}'`;
+          throw new AddressValueError(msg);
+        }
+        skipIndex = i;
+      }
+    }
+
+    let partsHi: number;
+    let partsLo: number;
+    let partsSkipped: number;
+    // partsHi is the number of parts to copy from above/before the "::"
+    // partsLo is the number of parts to copy from below/after the "::"
+    if (!isNull(skipIndex)) {
+      // If we found a "::", then check if it also covers the endpoints.
+      partsHi = skipIndex;
+      partsLo = parts.length - skipIndex - 1;
+      if (parts[0].length === 0) {
+        partsHi -= 1;
+        if (partsHi) {
+          const msg = `Leading ":" only permitted as part of "::" in '${ipStr}'`;
+          throw new AddressValueError(msg); // ^: requires ^::
+        }
+      }
+
+      const lastItem = parts.length - 1;
+      if (parts[lastItem].length === 0) {
+        partsLo -= 1;
+        if (partsLo) {
+          const msg = `Trailing ":" only permitted as part of "::" in '${ipStr}'`;
+          throw new AddressValueError(msg); // :$ require ::$
+        }
+      }
+
+      partsSkipped = this._HEXTET_COUNT - (partsHi + partsHi);
+      if (partsSkipped < 1) {
+        const msg = `Expected at most ${
+          this._HEXTET_COUNT - 1
+        } other parts with "::" in '${ipStr}'`;
+        throw new AddressValueError(msg);
+      }
+    } else {
+      // Otherwise, allocate the entire address to partsHi. The
+      // endpoints could still be empty, but _parseHextet() will check
+      // for that
+      if (parts.length !== this._HEXTET_COUNT) {
+        const msg = `Exactly ${this._HEXTET_COUNT} parts expected without "::" in '${ipStr}'`;
+        throw new AddressValueError(msg);
+      }
+
+      if (parts[0].length === 0) {
+        const msg = `Leading ":" only permitted as part of "::" in '${ipStr}'`;
+        throw new AddressValueError(msg);
+      }
+
+      const lastItem = parts.length - 1;
+      if (parts[lastItem].length === 0) {
+        const msg = `Trailing ":" only permitted as part of "::" in '${ipStr}'`;
+        throw new AddressValueError(msg);
+      }
+
+      partsHi = parts.length;
+      partsLo = 0;
+      partsSkipped = 0;
+    }
+
+    try {
+      // now, parse the hextets into a 128-bit bigint.
+      let ipInt = BigInt(0);
+      for (let i = 0; i < partsHi; i++) {
+        ipInt <<= BigInt(16);
+        ipInt |= BigInt(this._parseHextet(parts[i]));
+      }
+      ipInt <<= BigInt(16) * BigInt(partsSkipped);
+      for (let i = -partsLo; i < 0; i++) {
+        ipInt <<= BigInt(16);
+        ipInt |= BigInt(this._parseHextet(parts[i]));
+      }
+      return ipInt;
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        throw new AddressValueError(`${err.message} in '${ipStr}'`);
+      }
+    }
+    throw new Error("Unexpected error in _ipIntFromString");
   }
 
   /**
@@ -272,7 +472,24 @@ export class IPv6Address implements IPv6AddressT {
    * [0..FFFF].
    */
   static _parseHextet(hextetStr: string): number {
-    return _BaseV6Struct._parseHextet(IPv6Address, hextetStr);
+    // Reject non-ascii digits.
+    if (!isSuperset(this._HEX_DIGITS, hextetStr)) {
+      throw new Error(`Only hex digits permitted in '${hextetStr}'`);
+    }
+
+    // We do the length check second, since the invalid character error
+    // is likely to be more informative for the user
+    if (hextetStr.length > 4) {
+      const msg = `At most 4 characters permitted in '${hextetStr}'`;
+      throw new Error(msg);
+    }
+
+    // Length check means we can skip checking the integer value
+    const parsed = parseInt(hextetStr, 16);
+    if (isNaN(parsed)) {
+      throw new Error("Unexpected NaN in hextet str");
+    }
+    return parsed;
   }
 
   /**
@@ -287,7 +504,40 @@ export class IPv6Address implements IPv6AddressT {
    * @returns {string[]} A list of strings
    */
   static _compressHextets(hextets: string[]): string[] {
-    return _BaseV6Struct._compressHextets(hextets);
+    let bestDoublecolonStart = -1;
+    let bestDoublecolonLen = 0;
+    let doublecolonStart = -1;
+    let doubleColonLen = 0;
+
+    for (let index = 0; index < hextets.length; index++) {
+      const hextet = hextets[index];
+      if (hextet === "0") {
+        doubleColonLen += 1;
+        if (doublecolonStart === -1) {
+          // Start of a sequence of zeroes.
+          doublecolonStart = index;
+        }
+        if (doubleColonLen > bestDoublecolonLen) {
+          // This is the longest sequence of zeroes so far.
+          bestDoublecolonLen = doubleColonLen;
+          bestDoublecolonStart = doublecolonStart;
+        }
+      }
+    }
+
+    if (bestDoublecolonLen > 1) {
+      const bestDoublecolonEnd = bestDoublecolonStart + bestDoublecolonLen;
+      // For zeroes at the end of the address
+      if (bestDoublecolonEnd === hextets.length) {
+        hextets.push("");
+      }
+      hextets.splice(bestDoublecolonStart, bestDoublecolonEnd, "");
+      // For zeroes at the beginning of the address.
+      if (bestDoublecolonStart === 0) {
+        hextets = [""].concat(hextets);
+      }
+    }
+    return hextets;
   }
 
   /**
@@ -296,16 +546,36 @@ export class IPv6Address implements IPv6AddressT {
    * @returns {string} A string, the hexadecimal representation of the address.
    * @throws {Error} The address is bigger than 128 bits of all ones.
    */
-  _stringFromIpInt(ipInt: bigint): string {
-    return _BaseV6Struct._stringFromIpInt(IPv6Address, ipInt);
+  static _stringFromIpInt(ipInt: bigint): string {
+    if (ipInt > this._ALL_ONES) {
+      throw new Error("IPv6 Address is too large");
+    }
+
+    const hexStr = `${ipInt.toString(16)}${"0".repeat(32)}`.slice(0, 32);
+    let hextets = [];
+    for (let x = 0; x < 32; x + 4) {
+      const hextet = parseInt(hexStr.slice(x, x + 4), 16).toString(16);
+      hextets.push(hextet);
+    }
+    hextets = this._compressHextets(hextets);
+    return hextets.join(":");
   }
 
   /**
    * Expand a shortened IPv6 address.
    * @returns {string} A string, the expanded IPv6 address.
    */
-  _explodeShorthandIpString(this: IPv6Address): string {
-    return _BaseV6Struct._explodeShorthandIpString(IPv6Address, this);
+  _explodeShorthandIpString(): string {
+    const ipStr = this.toString();
+
+    const ipInt = IPv6Address._ipIntFromString(ipStr);
+    const hexStr = `${ipInt.toString(16)}${"0".repeat(32)}`.slice(0, 32);
+    const parts = [];
+    for (let x = 0; x < 32; x + 4) {
+      const part = hexStr.slice(x, x + 4);
+      parts.push(part);
+    }
+    return parts.join(":");
   }
 
   /**
@@ -313,8 +583,13 @@ export class IPv6Address implements IPv6AddressT {
    *
    * This implements the method described in RFC3596 2.5.
    */
-  _reversePointer(this: IPv6Address): string {
-    return _BaseV6Struct._reversePointer(this);
+  _reversePointer(): string {
+    const reverseChars = this.exploded
+      .split("")
+      .reverse()
+      .join("")
+      .replace(":", ".");
+    return `${reverseChars.split("").join(".")}.ip6.arpa`;
   }
 
   /**
@@ -325,7 +600,17 @@ export class IPv6Address implements IPv6AddressT {
    * @returns {[string, string | null]} [addr, scopeId] tuple.
    */
   static _splitScopeId(ipStr: string): [string, string | null] {
-    return _BaseV6Struct._splitScopeId(ipStr);
+    const parts = ipStr.split("%");
+    const addr = parts[0];
+    const sep = ipStr.indexOf("%") !== -1;
+    let scopeId = parts[1] || null;
+
+    if (!sep) {
+      scopeId = null;
+    } else if (isNull(scopeId) || scopeId.indexOf("%") !== -1) {
+      throw new AddressValueError(`Invalid IPv6 address: '${ipStr}'`);
+    }
+    return [addr, scopeId];
   }
 
   get maxPrefixlen(): 128 {

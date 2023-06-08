@@ -1,4 +1,6 @@
-import { AddressValueError, IPv4Address, IPv4Network } from "./internal";
+import { AddressValueError } from "./00-AddressValueError";
+import { IPv4Address } from "./01-IPv4Address";
+import { IPv4Network } from "./03-IPv4Network";
 
 describe("IPv4Address", () => {
   it.each([

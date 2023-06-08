@@ -1,4 +1,5 @@
-import { IPv6Address, IPv6Network } from "./internal";
+import { IPv6Address } from "./IPv6Address";
+import { IPv6Network } from "./IPv6Network";
 
 export class _IPv6Constants {
   static readonly _linklocalNetwork = new IPv6Network("169.254.0.0/16");

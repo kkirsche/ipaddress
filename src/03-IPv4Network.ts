@@ -1,16 +1,16 @@
 import {
   ByteArray,
   Prefixlen,
-  UnparsedIPv6Address,
-  UnparsedIPv6Network,
+  UnparsedIPv4Address,
+  UnparsedIPv4Network,
 } from "./interfaces";
-import { IPv6ALLONES, IPv6LENGTH } from "./constants";
+import { IPv4ALLONES, IPv4LENGTH } from "./constants";
 import {
   _countRighthandZeroBits,
   _splitOptionalNetmask,
+  intFromBytes,
   intToBytes,
   isSafeNumber,
-  isSuperset,
   strIsAscii,
   strIsDigit,
 } from "./utilities";
@@ -20,40 +20,66 @@ import {
   isNull,
   isNumber,
   isString,
+  isUndefined,
 } from "./typeGuards";
 
 import { AddressValueError } from "./00-AddressValueError";
 import { IPv4Address } from "./01-IPv4Address";
-import { IPv6Address } from "./IPv6Address";
 import { NetmaskValueError } from "./NetmaskValueError";
+import { _IPv4Constants } from "./_IPv4Constants";
 
-export class IPv6Network {
-  static readonly _version = 6;
-  static readonly _ALL_ONES = IPv6ALLONES;
-  static readonly _HEXTET_COUNT = 8;
-  static readonly _HEX_DIGITS = new Set("0123456789ABCDEFabcdef");
-  static readonly _maxPrefixlen = IPv6LENGTH;
-  static _netmaskCache: Record<string | number, [IPv6Address, Prefixlen]> = {};
+// extends _BaseV4, _BaseNetwork
+export class IPv4Network {
+  static readonly _version = 4;
+  static readonly _ALL_ONES = IPv4ALLONES;
+  static readonly _maxPrefixlen = IPv4LENGTH;
+  static readonly _constants = _IPv4Constants;
+  static _netmaskCache: Record<string | number, [IPv4Address, Prefixlen]> = {};
 
-  // class to use when creating address objects
-  static readonly _addressClass = IPv6Address;
-
-  networkAddress: IPv6Address;
-  netmask: IPv6Address;
+  networkAddress: IPv4Address;
+  netmask: IPv4Address;
   _prefixlen: number;
-
-  constructor(address: UnparsedIPv6Network, strict = true) {
-    const [addr, mask] = IPv6Network._splitAddrPrefix(address);
-    this.networkAddress = new IPv6Address(addr);
-    const [_mask, _prefix] = IPv6Network._makeNetmask(mask);
-    this.netmask = _mask;
-    this._prefixlen = _prefix;
-    const packed = this.networkAddress.toNumber();
-    if ((packed & this.netmask.toNumber()) !== packed) {
+  /**
+   * Instantiate a new IPv4 network object.
+   * @param address A string or integer representing the IP [& network].
+   * '192.0.2.0/24'
+   * '192.0.2.0/255.255.255.0'
+   * '192.0.2.0/0.0.0.255'
+   * are all functionally the same in IPv4. Similarly,
+   * '192.0.2.1'
+   * '192.0.2.1/255.255.255.255'
+   * '192.0.2.1/32'
+   * are also functionally equivalent. That is to say, failing to
+   * provide a subnetmask will create an object with a mask of /32.
+   *
+   * If the mask (portion after the / in the argument) is given in
+   * dotted quad form, it is treated as a netmask if it starts with a
+   * non-zero field (e.g. /255.0.0.0 == /8) and as a hostmask if it
+   * starts with a zero field (e.g. 0.255.255.255 == /8), with the
+   * single exception of an all-zero mask which is treated as a
+   * netmask == /0. If no mask is given, a default of /32 is used.
+   *
+   * Additionally, an integer can be passed, so
+   * IPv4Network('192.0.2.1') == IPv4Network(3221225985)
+   * or, more generally
+   * IPv4Interface(int(IPv4Interface('192.0.2.1'))) ==
+   *    IPv4Interface('192.0.2.1')
+   * @param strict Strictly parse the network.
+   * @throws {AddressTypeError, NetmaskTypeError, TypeError}
+   */
+  constructor(address: UnparsedIPv4Network, strict = true) {
+    const [addr, mask] = IPv4Network._splitAddrPrefix(address);
+    this.networkAddress = new IPv4Address(addr);
+    const [netmask, prefixlen] = IPv4Network._makeNetmask(mask);
+    this.netmask = netmask;
+    this._prefixlen = prefixlen;
+    const packed = BigInt(this.networkAddress.toNumber());
+    const netmaskNumber = BigInt(netmask.toNumber());
+    if ((packed & netmaskNumber) !== packed) {
       if (strict) {
-        throw new Error(`${this.toString()} has host bits set`);
+        throw new TypeError(`'${address}' has host bits set`);
       } else {
-        this.networkAddress = new IPv6Address(packed & this.netmask.toNumber());
+        this.networkAddress = new IPv4Address(packed & netmaskNumber);
       }
     }
   }
@@ -96,7 +122,11 @@ export class IPv6Network {
     }
   }
 
-  _checkPackedAddress(address: ByteArray, expectedLen: number): void {
+  _checkPackedAddress(
+    this: IPv4Network,
+    address: ByteArray,
+    expectedLen: number
+  ): void {
     const addressLen = address.length;
     if (addressLen !== expectedLen) {
       const msg = `'${address}' (len ${addressLen} != ${expectedLen}) is not permitted as an IPv${this.version} address.`;
@@ -109,10 +139,13 @@ export class IPv6Network {
    * @param prefixlen An integer, the prefix length.
    * @returns {number} An integer.
    */
-  static _ipIntFromPrefix(prefixlen: Prefixlen): bigint {
+  static _ipIntFromPrefix(prefixlen: Prefixlen): number {
     const result =
       BigInt(this._ALL_ONES) ^ (BigInt(this._ALL_ONES) >> BigInt(prefixlen));
-    return result;
+    if (isSafeNumber(result)) {
+      return Number(result);
+    }
+    throw new Error("Unexpected bigint in _ipIntFromPrefix on IPv4Network");
   }
 
   /**
@@ -121,7 +154,7 @@ export class IPv6Network {
    * @returns {Prefixlen} An integer, the prefix length.
    * @throws {TypeError} If the input intermingles zeroes & ones.
    */
-  static _prefixFromIpInt(ipInt: bigint): Prefixlen {
+  static _prefixFromIpInt(ipInt: number): Prefixlen {
     const trailingZeroes = _countRighthandZeroBits(ipInt, this._maxPrefixlen);
     const prefixlen = this._maxPrefixlen - trailingZeroes;
     const leadingOnes = BigInt(ipInt) >> BigInt(trailingZeroes);
@@ -172,7 +205,7 @@ export class IPv6Network {
    */
   static _prefixFromIpString(ipStr: string): Prefixlen {
     // Parse the netmask/hostmask like an IP address.
-    let ipInt = BigInt(-1);
+    let ipInt = -1;
     try {
       ipInt = this._ipIntFromString(ipStr);
     } catch (err: unknown) {
@@ -193,7 +226,13 @@ export class IPv6Network {
     }
 
     // Invert the bits, and try matching a /0+1+/ hostmask instead.
-    const inverted = BigInt(ipInt) ^ BigInt(this._ALL_ONES);
+    let inverted: bigint | number = BigInt(ipInt) ^ BigInt(this._ALL_ONES);
+    if (isSafeNumber(inverted)) {
+      inverted = Number(inverted);
+    }
+    if (isBigInt(inverted)) {
+      throw new Error("Unexpected bigint in IPv4Address _prefixFromIpString");
+    }
     try {
       return this._prefixFromIpInt(inverted);
     } catch (err: unknown) {
@@ -207,10 +246,10 @@ export class IPv6Network {
    * @returns {[UnparsedIPv4Address, Prefixlen]} [addr, prefix] tuple
    */
   static _splitAddrPrefix(
-    address: UnparsedIPv6Address | UnparsedIPv6Network
-  ): [UnparsedIPv6Address, Prefixlen] {
+    address: UnparsedIPv4Address | UnparsedIPv4Network
+  ): [UnparsedIPv4Address, Prefixlen] {
     // a packed address or integer
-    if (isBigInt(address) || isByteArray(address)) {
+    if (isNumber(address) || isByteArray(address)) {
       return [address, this._maxPrefixlen];
     }
 
@@ -223,9 +262,9 @@ export class IPv6Network {
   // END: _IPAddressBase
   // BEGIN: _BaseNetwork
   toRepr(): string {
-    return `IPv6Network('${this.toString()}')`;
+    return `IPv4Network('${this.toString()}')`;
   }
-  toString(): string {
+  toString(this: IPv4Network): string {
     return `${this.networkAddress.toString()}/${this.prefixlen}`;
   }
   /**
@@ -234,37 +273,37 @@ export class IPv6Network {
    * This is a like iterate except it doesn't return the network
    * or broadcast addresses.
    */
-  *hosts(): Generator<IPv6Address> {
+  *hosts(): Generator<IPv4Address> {
     const network = this.networkAddress.toNumber();
     const broadcast = this.broadcastAddress.toNumber();
-    for (let x = network + BigInt(1); x < broadcast; x++) {
-      yield new IPv6Address(x);
+    for (let x = network + 1; x < broadcast; x++) {
+      yield new IPv4Address(x);
     }
   }
-  *iterate(): Generator<IPv6Address> {
+  *iterate(): Generator<IPv4Address> {
     const network = this.networkAddress.toNumber();
     const broadcast = this.broadcastAddress.toNumber();
-    for (let x = network + BigInt(1); x < broadcast; x++) {
-      yield new IPv6Address(x);
+    for (let x = network + 1; x < broadcast; x++) {
+      yield new IPv4Address(x);
     }
   }
-  getItem(n: number): IPv6Address {
+  getItem(n: number): IPv4Address {
     const network = this.networkAddress.toNumber();
     const broadcast = this.broadcastAddress.toNumber();
     if (n >= 0) {
-      if (network + BigInt(n) > broadcast) {
+      if (network + n > broadcast) {
         throw new Error("address out of range");
       }
-      return new IPv6Address(network + BigInt(n));
+      return new IPv4Address(network + n);
     } else {
       n += 1;
-      if (broadcast + BigInt(n) < network) {
+      if (broadcast + n < network) {
         throw new Error("address out of range");
       }
-      return new IPv6Address(broadcast + BigInt(n));
+      return new IPv4Address(broadcast + n);
     }
   }
-  lessThan(other: IPv6Network): boolean {
+  lessThan(this: IPv4Network, other: IPv4Network): boolean {
     if (this.version !== other.version) {
       throw new TypeError(
         `${this.toString()} and ${other.toString()} are not of the same version`
@@ -278,14 +317,14 @@ export class IPv6Network {
     }
     return false;
   }
-  equals(other: IPv6Network): boolean {
+  equals(other: IPv4Network): boolean {
     return (
       this.version === other.version &&
       this.networkAddress.equals(other.networkAddress) &&
       this.netmask.toNumber() === other.netmask.toNumber()
     );
   }
-  contains(other: IPv6Address): boolean {
+  contains(other: IPv4Address): boolean {
     // always false if one is v4 and the other is v6
     if (this.version !== other.version) {
       return false;
@@ -300,7 +339,7 @@ export class IPv6Network {
    * @param other The other network
    * @returns {boolean} true if contained, false otherwise.
    */
-  overlaps(other: IPv6Network): boolean {
+  overlaps(other: IPv4Network): boolean {
     return (
       other.contains(this.networkAddress) ||
       other.contains(this.broadcastAddress) ||
@@ -308,15 +347,15 @@ export class IPv6Network {
       this.contains(other.broadcastAddress)
     );
   }
-  get broadcastAddress(): IPv6Address {
-    return new IPv6Address(
+  get broadcastAddress(): IPv4Address {
+    return new IPv4Address(
       BigInt(this.networkAddress.toNumber()) | BigInt(this.hostmask.toNumber())
     );
   }
   // https://github.com/python/cpython/blob/eb0ce92141cd14196a8922cfe9df4a713c5c1d9b/Lib/ipaddress.py#L764
-  get hostmask(): IPv6Address {
-    return new IPv6Address(
-      BigInt(this.networkAddress.toNumber()) ^ BigInt(IPv6Network._ALL_ONES)
+  get hostmask(): IPv4Address {
+    return new IPv4Address(
+      BigInt(this.networkAddress.toNumber()) ^ BigInt(IPv4Network._ALL_ONES)
     );
   }
   get withPrefixlen(): string {
@@ -331,15 +370,10 @@ export class IPv6Network {
   /**
    * Number of hosts in the current subnet.
    */
-  get numAddresses(): bigint | number {
-    const result =
-      this.broadcastAddress.toNumber() -
-      this.networkAddress.toNumber() +
-      BigInt(1);
-    if (isSafeNumber(result)) {
-      return Number(result);
-    }
-    return result;
+  get numAddresses(): number {
+    return (
+      this.broadcastAddress.toNumber() - this.networkAddress.toNumber() + 1
+    );
   }
   get prefixlen(): number {
     return this._prefixlen;
@@ -355,8 +389,8 @@ export class IPv6Network {
    *
    * addrIter will then produce:
    * [
-   *    IPv6Network("192.0.2.0/32"), IPv6Network("192.0.2.2/31"),
-   *    IPv6Network("192.0.2.4/30"), IPv6Network("192.0.2.8/39")
+   *    IPv4Network("192.0.2.0/32"), IPv4Network("192.0.2.2/31"),
+   *    IPv4Network("192.0.2.4/30"), IPv4Network("192.0.2.8/39")
    * ]
    *
    * or via IPv6:
@@ -375,17 +409,14 @@ export class IPv6Network {
    *    IPv6Network("2001:db8:8000::/33")
    * ]
    *
-   * @param other An IPv6Network object of the same type.
-   * @returns {Generator<IPv6Network, void>} An iterator of the IPv6Network objects
+   * @param other An IPv4Network object of the same type.
+   * @returns {Generator<IPv4Network, void>} An iterator of the IPv4Network objects
    * which is this minus other.
    * @throws {Error} If this and other are of differing address versions, or if other
    * is not a network object.
    * @throws {Error} If other is not completely contained by this.
    */
-  *addressExclude(
-    this: IPv6Network,
-    other: IPv6Network
-  ): Generator<IPv6Network, void> {
+  *addressExclude(other: IPv4Network): Generator<IPv4Network, void> {
     if (this.version !== other.version) {
       throw new Error(
         `${this.toString()} and ${other.toString()} are not of the same version`
@@ -403,7 +434,7 @@ export class IPv6Network {
     }
 
     // Make sure we're comparing the network of other.
-    other = new IPv6Network(
+    other = new IPv4Network(
       `${other.networkAddress.toString()}/${other.prefixlen}`
     );
 
@@ -457,19 +488,19 @@ export class IPv6Network {
    * @returns {1 | 0 | -1} If the IP versions of this and other are the same, returns:
    *
    * -1 if (this.lessThan(other)):
-   *    eg: IPv6Network("192.0.2.0/25") < IPv6Network("192.0.2.128"/25)
+   *    eg: IPv4Network("192.0.2.0/25") < IPv4Network("192.0.2.128"/25)
    *    IPv6Network("2001:db8::1000/124") < IPv6Network("2001:db8::2000/124")
    *
    *  0 if (this.equals(other)):
-   *    eg: IPv6Network("192.0.2.0/24") == IPv6Network("192.0.2.0/24")
+   *    eg: IPv4Network("192.0.2.0/24") == IPv4Network("192.0.2.0/24")
    *    IPv6Network("2001:db8::1000/124") == IPv6Network("2001:db8::1000/124")
    *
    *  1 if (other.lessThan(this)):
-   *    eg: IPv6Network("192.0.2.128/25") > IPv6Network("192.0.2.0/25")
+   *    eg: IPv4Network("192.0.2.128/25") > IPv4Network("192.0.2.0/25")
    *    IPv6Network("2001:db8::2000/124") > IPv6Network("2001:db8::1000/124")
    *  @throws {Error} if the IP versions are different.
    */
-  compareNetworks(other: IPv6Network): 1 | 0 | -1 {
+  compareNetworks(other: IPv4Network): 1 | 0 | -1 {
     if (this.version !== other.version) {
       throw new TypeError(
         `${this.toString()} and ${other.toString()} are not of the same type`
@@ -498,7 +529,7 @@ export class IPv6Network {
    * this address' network and netmask. This function is a suitable "key" argument for
    * sorting.
    */
-  _getNetworksKey(): [6, IPv6Address, IPv6Address] {
+  _getNetworksKey(): [4, IPv4Address, IPv4Address] {
     return [this.version, this.networkAddress, this.netmask];
   }
   /**
@@ -512,7 +543,7 @@ export class IPv6Network {
    * @param newPrefix The desired new prefix length. This must be a larger number
    * (smaller prefix) than the existing prefix. This should not be set if prefixlenDiff
    * is also set.
-   * @returns {Generator<IPv6Network, void>} An iterator of IPv4 objects.
+   * @returns {Generator<IPv4Network, void>} An iterator of IPv4 objects.
    * @throws {Error} The prefixlenDiff is too small or too large.
    * @throws {Error} prefixlenDiff and newPrefix are both set or newPrefix is a
    * smaller number than the current prefix (smaller number means a larger network).
@@ -520,7 +551,7 @@ export class IPv6Network {
   *subnets(
     prefixlenDiff = 1,
     newPrefix: number | null = null
-  ): Generator<IPv6Network, IPv6Network[]> {
+  ): Generator<IPv4Network, IPv4Network[]> {
     if (this._prefixlen === this.maxPrefixlen) {
       yield this;
       return [this];
@@ -550,9 +581,9 @@ export class IPv6Network {
     const end = this.broadcastAddress.toNumber();
     const step =
       (BigInt(this.hostmask.toNumber()) + BigInt(1)) >> BigInt(prefixlenDiff);
-    const subnets: IPv6Network[] = [];
+    const subnets: IPv4Network[] = [];
     for (let newAddr = start; newAddr < end; step) {
-      const current = new IPv6Network([newAddr, newPrefixlen]);
+      const current = new IPv4Network([newAddr, newPrefixlen]);
       yield current;
       subnets.push(current);
     }
@@ -567,13 +598,17 @@ export class IPv6Network {
    * (larger prefix) than the existing prefix. This should not be set if prefixlenDiff
    * is also set.
    * @param newPrefix Not documented?
-   * @returns {IPv6Network} An IPv6Network object.
+   * @returns {IPv4Network} An IPv4Network object.
    * @throws {Error} If this.prefixlen - prefixlenDiff < 0. I.e., you have a negative
    * prefix length.
    * @throws {Error} If prefixlenDiff and newPrefix are both set or newPrefix is a
    * larger number than the current prefix (larger number means a smaller network).
    */
-  supernet(prefixlenDiff = 1, newPrefix: number | null = null): IPv6Network {
+  supernet(
+    this: IPv4Network,
+    prefixlenDiff = 1,
+    newPrefix: number | null = null
+  ): IPv4Network {
     if (this._prefixlen === 0) {
       return this;
     }
@@ -595,13 +630,21 @@ export class IPv6Network {
       );
     }
 
-    const value =
+    let value: bigint | number =
       BigInt(this.networkAddress.toNumber()) &
       (BigInt(this.netmask.toNumber()) << BigInt(prefixlenDiff));
 
-    return new IPv6Network([value, newPrefixlen]);
+    if (isSafeNumber(value)) {
+      value = Number(value);
+    }
+
+    if (isBigInt(value)) {
+      throw new Error("Unexpected bigint in IPv4Network supernet");
+    }
+
+    return new IPv4Network([value, newPrefixlen]);
   }
-  static _isSubnetOf(a: IPv6Network, b: IPv6Network): boolean {
+  static _isSubnetOf(a: IPv4Network, b: IPv4Network): boolean {
     // Always false if one is v4 and the other is v6
     if (a.version !== b.version) {
       throw new Error(
@@ -624,347 +667,175 @@ export class IPv6Network {
    * @param other the other network
    * @returns {boolean} true if this network is a subnet of other.
    */
-  subnetOf(other: IPv6Network): boolean {
-    return IPv6Network._isSubnetOf(this, other);
+  subnetOf(other: IPv4Network): boolean {
+    return IPv4Network._isSubnetOf(this, other);
   }
   /**
    * @param other the other network
    * @returns {boolean} true if this network is a supernet of other.
    */
-  supernetOf(other: IPv6Network): boolean {
-    return IPv6Network._isSubnetOf(other, this);
+  supernetOf(other: IPv4Network): boolean {
+    return IPv4Network._isSubnetOf(other, this);
   }
   // END: _BaseNetwork
+  // BEGIN: _BaseV4
 
-  // BEGIN: _BaseV6
+  _explodeShorthandIpString(): string {
+    return this.toString();
+  }
 
   /**
-   * Make a [netmask, prefixLen] tuple from the given argument.
-   *
-   * Argument can be:
-   * - an integer (the prefix length)
+   * Make a [netmask, prefixlen] tuple from the given argument.
+   * @param arg Argument can be:
+   *  * - an integer (the prefix length)
    * - a string representing the prefix length (e.g. "24")
-   * - a string representing the prefix length (e.g. "255.255.255.0")
+   * - a string representing the prefix netmask (e.g. "255.255.255.0")
+   * @returns {NetmaskCacheValue} The [netmask, prefixlen] tuple.
    */
-  static _makeNetmask(arg: string | Prefixlen): [IPv6Address, Prefixlen] {
+  static _makeNetmask(arg: string | Prefixlen): [IPv4Address, Prefixlen] {
+    let prefixlen: Prefixlen;
     if (this._netmaskCache[arg] === undefined) {
-      let prefixlen: number;
       if (isNumber(arg)) {
         prefixlen = arg;
         if (!(0 <= prefixlen && prefixlen <= this._maxPrefixlen)) {
-          this._reportInvalidNetmask(prefixlen.toString(10));
+          throw new NetmaskValueError(`${prefixlen} is not a valid netmask`);
         }
       } else {
-        prefixlen = this._prefixFromPrefixString(arg);
+        try {
+          prefixlen = this._prefixFromPrefixString(arg);
+        } catch (err: unknown) {
+          // Check for a netmask or hostmask in dotted-quad form.
+          // This may raise NetmaskTypeError
+          prefixlen = this._prefixFromIpString(arg);
+        }
       }
-
-      const netmask = new IPv6Address(this._ipIntFromPrefix(prefixlen));
+      const netmask = new IPv4Address(this._ipIntFromPrefix(prefixlen));
       this._netmaskCache[arg] = [netmask, prefixlen];
     }
+    const result = this._netmaskCache[arg];
+    if (isUndefined(result)) {
+      throw new Error("Unexpected cache miss");
+    }
 
-    return this._netmaskCache[arg];
+    return result;
   }
 
   /**
-   * Turn an IPv6 ipStr into an integer.
-   * @param ipStr A string, the IPv6 ipStr.
-   * @returns {bigint} A bigint, the IPv6 address.
-   * @throws {AddressValueError} if ipStr isn't a valid IPv6 address.
+   * Turn the given IP string into an integer for comparison.
+   * @param ipStr A string, the IP ipStr.
+   * @returns {number} The IP ipStr as an integer.
+   * @throws {AddressValueError} if ipStr isn't a valid IPv4 Address.
    */
-  static _ipIntFromString(ipStr: string): bigint {
-    if (ipStr.trim().length === 0) {
+  static _ipIntFromString(ipStr: string): number {
+    if (ipStr === "") {
       throw new AddressValueError("Address cannot be empty");
     }
 
-    const parts = ipStr.split(":");
-
-    // An IPv6 address needs at least 2 colons (3 parts).
-    const _minParts = 3;
-
-    if (parts.length < _minParts) {
-      const msg = `At least ${_minParts} expected in '${ipStr}'`;
-      throw new AddressValueError(msg);
-    }
-
-    // If the address has an IPv4-style suffix, convert it to hexadecimal.
-    const lastItem = parts.length - 1;
-    if (parts[lastItem].indexOf(".") !== -1) {
-      let ipv4Int: IPv4Address["_ip"];
-      try {
-        const popped = parts.pop();
-        if (popped === undefined) {
-          throw new Error("Unexpected undefined part");
-        }
-        ipv4Int = new IPv4Address(popped)._ip;
-        parts.push(
-          ((BigInt(ipv4Int) >> BigInt(16)) & BigInt(0xffff)).toString(16)
-        );
-        parts.push((BigInt(ipv4Int) & BigInt(0xffff)).toString(16));
-      } catch (err: unknown) {
-        if (err instanceof AddressValueError) {
-          throw new AddressValueError(`${err.message} in '${ipStr}'`);
-        }
-      }
-    }
-
-    // An IPv6 address can't have more than 8 colons (9 parts).
-    // The extra colon comes from using the "::" notation for a single
-    // leading or trailing zero part.
-    const _maxParts = this._HEXTET_COUNT + 1;
-    if (parts.length > _maxParts) {
-      const msg = `At most ${_maxParts - 1} colons are permitted in '${ipStr}'`;
-      throw new AddressValueError(msg);
-    }
-
-    // Disregarding the endpoints, find "::" with nothing in between.
-    // This indicates that a run of zeroes has been skipped.
-    let skipIndex: number | null = null;
-    for (let i = 1; i < parts.length - 1; i++) {
-      const element = parts[i];
-      if (element.length === 0) {
-        if (!isNull(skipIndex)) {
-          // Can't have more than one "::"
-          const msg = `At most one "::" permitted in '${ipStr}'`;
-          throw new AddressValueError(msg);
-        }
-        skipIndex = i;
-      }
-    }
-
-    let partsHi: number;
-    let partsLo: number;
-    let partsSkipped: number;
-    // partsHi is the number of parts to copy from above/before the "::"
-    // partsLo is the number of parts to copy from below/after the "::"
-    if (!isNull(skipIndex)) {
-      // If we found a "::", then check if it also covers the endpoints.
-      partsHi = skipIndex;
-      partsLo = parts.length - skipIndex - 1;
-      if (parts[0].length === 0) {
-        partsHi -= 1;
-        if (partsHi) {
-          const msg = `Leading ":" only permitted as part of "::" in '${ipStr}'`;
-          throw new AddressValueError(msg); // ^: requires ^::
-        }
-      }
-
-      const lastItem = parts.length - 1;
-      if (parts[lastItem].length === 0) {
-        partsLo -= 1;
-        if (partsLo) {
-          const msg = `Trailing ":" only permitted as part of "::" in '${ipStr}'`;
-          throw new AddressValueError(msg); // :$ require ::$
-        }
-      }
-
-      partsSkipped = this._HEXTET_COUNT - (partsHi + partsHi);
-      if (partsSkipped < 1) {
-        const msg = `Expected at most ${
-          this._HEXTET_COUNT - 1
-        } other parts with "::" in '${ipStr}'`;
-        throw new AddressValueError(msg);
-      }
-    } else {
-      // Otherwise, allocate the entire address to partsHi. The
-      // endpoints could still be empty, but _parseHextet() will check
-      // for that
-      if (parts.length !== this._HEXTET_COUNT) {
-        const msg = `Exactly ${this._HEXTET_COUNT} parts expected without "::" in '${ipStr}'`;
-        throw new AddressValueError(msg);
-      }
-
-      if (parts[0].length === 0) {
-        const msg = `Leading ":" only permitted as part of "::" in '${ipStr}'`;
-        throw new AddressValueError(msg);
-      }
-
-      const lastItem = parts.length - 1;
-      if (parts[lastItem].length === 0) {
-        const msg = `Trailing ":" only permitted as part of "::" in '${ipStr}'`;
-        throw new AddressValueError(msg);
-      }
-
-      partsHi = parts.length;
-      partsLo = 0;
-      partsSkipped = 0;
+    const octets = ipStr.split(".");
+    if (octets.length !== 4) {
+      throw new AddressValueError(`Expected 4 octets in ${ipStr}`);
     }
 
     try {
-      // now, parse the hextets into a 128-bit bigint.
-      let ipInt = BigInt(0);
-      for (let i = 0; i < partsHi; i++) {
-        ipInt <<= BigInt(16);
-        ipInt |= BigInt(this._parseHextet(parts[i]));
+      const parsedOctets = intFromBytes(
+        octets.map((octet) => this._parseOctet(octet)),
+        "big" // big-endian / network-byte order
+      );
+      if (!isNumber(parsedOctets)) {
+        throw new AddressValueError(
+          `Invalid IPv4 address integer: ${parsedOctets} is of type ${typeof parsedOctets} instead of number`
+        );
       }
-      ipInt <<= BigInt(16) * BigInt(partsSkipped);
-      for (let i = -partsLo; i < 0; i++) {
-        ipInt <<= BigInt(16);
-        ipInt |= BigInt(this._parseHextet(parts[i]));
-      }
-      return ipInt;
-    } catch (err: unknown) {
-      if (err instanceof Error) {
-        throw new AddressValueError(`${err.message} in '${ipStr}'`);
-      }
+      return parsedOctets;
+    } catch (error: unknown) {
+      let message = `Unknown error occurred while parsing ${ipStr}.`;
+      if (error instanceof Error) message = `${error.message} in ${ipStr}`;
+      throw new AddressValueError(message);
     }
-    throw new Error("Unexpected error in _ipIntFromString");
   }
 
   /**
-   * Convert an IPv6 hextet string into an integer
-   * @param hextetStr A string, the number to parse.
-   * @returns {number} The hextet as an integer.
-   * @throws {Error} if the input isn't strictly a hex number from
-   * [0..FFFF].
+   * Convert a dotted decimal octet into an integer
+   * @param octetStr A string, the number to parse.
+   * @returns {number} The octet as an integer.
+   * @throws {TypeError} if the octet isn't strictly a decimal [0..255].
    */
-  static _parseHextet(hextetStr: string): number {
-    // Reject non-ascii digits.
-    if (!isSuperset(this._HEX_DIGITS, hextetStr)) {
-      throw new Error(`Only hex digits permitted in '${hextetStr}'`);
+  static _parseOctet(octetStr: string): number {
+    if (octetStr === "") {
+      throw new TypeError("Empty octet is not permitted.");
+    }
+    // Reject non-ASCII digits.
+    if (!strIsAscii(octetStr) && !strIsDigit(octetStr)) {
+      throw new TypeError(`Only decimal digits permitted in '${octetStr}'`);
     }
 
-    // We do the length check second, since the invalid character error
+    // We do length check second, since the invalid character error
     // is likely to be more informative for the user
-    if (hextetStr.length > 4) {
-      const msg = `At most 4 characters permitted in '${hextetStr}'`;
-      throw new Error(msg);
+    if (octetStr.length > 3) {
+      throw new TypeError(`At most 3 characters permitted in '${octetStr}'`);
     }
 
-    // Length check means we can skip checking the integer value
-    const parsed = parseInt(hextetStr, 16);
-    if (isNaN(parsed)) {
-      throw new Error("Unexpected NaN in hextet str");
+    // Handle leading zeroes as strict as glibc's inet_pton()
+    // See security bug in Python's issue tracker, bpo-36384
+    if (octetStr !== "0" && octetStr.indexOf("0") === 0) {
+      throw new TypeError(`Leading zeroes are not permitted in '${octetStr}'`);
     }
-    return parsed;
+
+    // Convert the integer (we know digits are legal)
+    const octetInt = parseInt(octetStr, 10);
+    if (octetInt > 255) {
+      throw new TypeError(`Octet ${octetInt} (> 255) not permitted`);
+    }
+
+    return octetInt;
   }
 
   /**
-   * Compresses a list of hextets.
-   *
-   * Compress a list of strings, replacing the longest continuous
-   * sequence of "0" in the list with "" and adding empty strings at
-   * the beginning or at the end of the string such that subsequently
-   * calling hextets.join(":") will produce the compressed version of
-   * the IPv6 address.
-   * @param hextets A list of strings, the hextets to compress.
-   * @returns {string[]} A list of strings
+   * Turns a 32-bit integer into dotted decimal notation.
+   * @param ipInt An integer, the IP Address.
+   * @returns {string} The IP address as a string in dotted decimal notation.
    */
-  static _compressHextets(hextets: string[]): string[] {
-    let bestDoublecolonStart = -1;
-    let bestDoublecolonLen = 0;
-    let doublecolonStart = -1;
-    let doubleColonLen = 0;
-
-    for (let index = 0; index < hextets.length; index++) {
-      const hextet = hextets[index];
-      if (hextet === "0") {
-        doubleColonLen += 1;
-        if (doublecolonStart === -1) {
-          // Start of a sequence of zeroes.
-          doublecolonStart = index;
-        }
-        if (doubleColonLen > bestDoublecolonLen) {
-          // This is the longest sequence of zeroes so far.
-          bestDoublecolonLen = doubleColonLen;
-          bestDoublecolonStart = doublecolonStart;
-        }
-      }
-    }
-
-    if (bestDoublecolonLen > 1) {
-      const bestDoublecolonEnd = bestDoublecolonStart + bestDoublecolonLen;
-      // For zeroes at the end of the address
-      if (bestDoublecolonEnd === hextets.length) {
-        hextets.push("");
-      }
-      hextets.splice(bestDoublecolonStart, bestDoublecolonEnd, "");
-      // For zeroes at the beginning of the address.
-      if (bestDoublecolonStart === 0) {
-        hextets = [""].concat(hextets);
-      }
-    }
-    return hextets;
+  static _stringFromIpInt(ipInt: number): string {
+    return intToBytes(ipInt, 4, "big")
+      .map((byte: ByteArray[number]) => byte.toString())
+      .join(".");
   }
 
   /**
-   * Turns a 128-bit integer into hexadecimal notation.
-   * @param ipInt An integer, the IP address.
-   * @returns {string} A string, the hexadecimal representation of the address.
-   * @throws {Error} The address is bigger than 128 bits of all ones.
+   * Turns a 32-bit integer into dotted decimal notation.
+   * @param ipInt An integer, the IP Address.
+   * @returns {string} The IP address as a string in dotted decimal notation.
    */
-  static _stringFromIpInt(ipInt: bigint): string {
-    if (ipInt > this._ALL_ONES) {
-      throw new Error("IPv6 Address is too large");
-    }
-
-    const hexStr = `${ipInt.toString(16)}${"0".repeat(32)}`.slice(0, 32);
-    let hextets = [];
-    for (let x = 0; x < 32; x + 4) {
-      const hextet = parseInt(hexStr.slice(x, x + 4), 16).toString(16);
-      hextets.push(hextet);
-    }
-    hextets = this._compressHextets(hextets);
-    return hextets.join(":");
+  _stringFromIpInt(ipInt: number): string {
+    return intToBytes(ipInt, 4, "big")
+      .map((byte: ByteArray[number]) => byte.toString())
+      .join(".");
   }
 
   /**
-   * Expand a shortened IPv6 address.
-   * @returns {string} A string, the expanded IPv6 address.
+   * Return the reverse DNS pointer name for the IPv4 address.
+   * This implements the method described in RFC1035 3.5.
+   * @returns {string} The reverse DNS pointer name.
    */
-  _explodeShorthandIpString(): string {
-    const ipStr = this.networkAddress.toString();
-    const ipInt = IPv6Network._ipIntFromString(ipStr);
-    const hexStr = `${ipInt.toString(16)}${"0".repeat(32)}`.slice(0, 32);
-    const parts = [];
-    for (let x = 0; x < 32; x + 4) {
-      const part = hexStr.slice(x, x + 4);
-      parts.push(part);
-    }
-    return `${parts.join(":")}/${this._prefixlen}`;
+  _reversePointer(this: IPv4Network): string {
+    return `${this.toString().split(".").reverse().join(".")}.in-addr.arpa`;
   }
-
-  /**
-   * Return the reverse DNS pointer name for the IPv6 address.
-   *
-   * This implements the method described in RFC3596 2.5.
-   */
-  _reversePointer(): string {
-    const reverseChars = this.exploded
-      .split("")
-      .reverse()
-      .join("")
-      .replace(":", ".");
-    return `${reverseChars.split("").join(".")}.ip6.arpa`;
+  get maxPrefixlen(): 32 {
+    return IPv4Network._maxPrefixlen;
   }
-
-  /**
-   * Helper function to parse IPv6 string address scope id.
-   *
-   * See RFC 4007 for details.
-   * @param ipStr A string, the IPv6 address.
-   * @returns {[string, string | null]} [addr, scopeId] tuple.
-   */
-  static _splitScopeId(ipStr: string): [string, string | null] {
-    const parts = ipStr.split("%");
-    const addr = parts[0];
-    const sep = ipStr.indexOf("%") !== -1;
-    let scopeId = parts[1] || null;
-
-    if (!sep) {
-      scopeId = null;
-    } else if (isNull(scopeId) || scopeId.indexOf("%") !== -1) {
-      throw new AddressValueError(`Invalid IPv6 address: '${ipStr}'`);
-    }
-    return [addr, scopeId];
+  get version(): 4 {
+    return IPv4Network._version;
   }
+  // END: _BaseV4
 
-  get maxPrefixlen(): 128 {
-    return IPv6Address._maxPrefixlen;
+  get isGlobal(): boolean {
+    const validNetAddr = !_IPv4Constants._publicNetwork.contains(
+      this.networkAddress
+    );
+    const validBroadcast = _IPv4Constants._publicNetwork.contains(
+      this.broadcastAddress
+    );
+    // @ts-expect-error this is broken until we finish adding isPrivate
+    return validNetAddr && validBroadcast && !this.isPrivate;
   }
-
-  get version(): 6 {
-    return IPv6Address._version;
-  }
-
-  // END: _BaseV6
 }
