@@ -1,6 +1,6 @@
 import { ByteArray, ByteOrder, IPInteger, IPv4LENGTH } from "./constants";
 
-import { AddressTypeError } from "./errors";
+import { AddressValueError } from "./AddressValueError";
 
 /**
  * Check whether a given number or big integer is within the safe integer range.
@@ -160,14 +160,14 @@ export function v6IntToPacked(address: IPInteger): ByteArray {
 }
 
 /**
- * Helper to split the netmask and raise AddressTypeError if needed.
+ * Helper to split the netmask and raise AddressValueError if needed.
  * @param {string} address The address string.
  * @returns {[string, string]} The tuple of the address and mask.
  */
 export function _splitOptionalNetmask(address: string): [string, string] {
   const addr = address.split("/");
   if (addr.length !== 2) {
-    throw new AddressTypeError(`Only one '/' permitted in ${address}`);
+    throw new AddressValueError(`Only one '/' permitted in ${address}`);
   }
   return [addr[0], addr[1]];
 }

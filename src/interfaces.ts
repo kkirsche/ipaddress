@@ -1,142 +1,160 @@
-import {
-  IPInteger,
-  IPVersion,
-  IPv4LENGTH,
-  IPv6LENGTH,
-  NetmaskCacheKey,
-  Prefixlen,
-  V4NetmaskCacheValue,
-} from "./constants";
+export type ByteArray = number[];
+export type ByteOrder = "big" | "little";
 
-import { IPv4Address } from "./IPv4Address";
-import { IPv4Interface } from "./IPv4Interface";
-import { IPv4Network } from "./IPv4Network";
-import { IPv6Address } from "./IPv6Address";
-import { IPv6Interface } from "./IPv6Interface";
-import { IPv6Network } from "./IPv6Network";
-import { _IPAddressBaseT } from "./_IPAddressBase";
-
-export type IPv4AddressClass = typeof IPv4Address;
-export type IPv4AddressInstance = IPv4Address;
-
-export type IPv6AddressClass = typeof IPv6Address;
-export type IPv6AddressInstance = IPv6Address;
-
-export type AddressClass = IPv4AddressClass | IPv6AddressClass;
-export type AddressInstance = IPv4AddressInstance | IPv6AddressInstance;
-
-export type IPv4NetworkClass = typeof IPv4Network;
-export type IPv4NetworkInstance = IPv4Network;
-
-export type IPv6NetworkClass = typeof IPv6Network;
-export type IPv6NetworkInstance = IPv6Network;
-
-export type NetworkClass = IPv4NetworkClass | IPv6NetworkClass;
-export type NetworkInstance = IPv4NetworkInstance | IPv6NetworkInstance;
-
-export type IPv4InterfaceClass = typeof IPv4Interface;
-export type IPv4InterfaceInstance = IPv4Interface;
-
-export type IPv6InterfaceClass = typeof IPv6Interface;
-export type IPv6InterfaceInstance = IPv6Interface;
-
-export type InterfaceClass = IPv4InterfaceClass | IPv6InterfaceClass;
-export type InterfaceInstance = IPv4InterfaceInstance | IPv6InterfaceInstance;
-
-export type IPv4Class =
-  | IPv4AddressClass
-  | IPv4NetworkClass
-  | IPv4InterfaceClass;
-export type IPv4Instance =
-  | IPv4AddressInstance
-  | IPv4NetworkInstance
-  | IPv4InterfaceInstance;
-
-export type IPv6Class =
-  | IPv6AddressClass
-  | IPv6NetworkClass
-  | IPv6InterfaceClass;
-export type IPv6Instance =
-  | IPv6AddressInstance
-  | IPv6NetworkInstance
-  | IPv6InterfaceInstance;
-
-export interface HasNetworkAddress {
-  networkAddress: IPv4Address;
-}
-
-export interface NetworkObj extends HasNetworkAddress, Stringable {
-  version: IPVersion;
+export type Netmask = {
+  netmask: IPv4AddressT;
   prefixlen: number;
-  netmask: IPv4Address;
-  hostmask: IPv4Address;
+};
+
+export type UnparsedIPv4Address = string | number | ByteArray;
+export type UnparsedIPv6Address = string | bigint | ByteArray;
+
+export type UnparsedAddress = UnparsedIPv4Address | UnparsedIPv6Address;
+
+export type UnparsedIPv4Network =
+  | UnparsedIPv4Address
+  | [UnparsedIPv4Address, number]; // [addr, mask]
+export type UnparsedIPv6Network =
+  | UnparsedIPv6Address
+  | [UnparsedIPv6Address, number]; // [addr, mask]
+export type UnparsedNetwork = UnparsedIPv4Network | UnparsedIPv6Network;
+
+export type NetmaskCacheKey = string | number;
+export type Prefixlen = number;
+export type V4NetmaskCacheValue = [_BaseV4T, Prefixlen];
+export type V6NetmaskCacheValue = [_BaseV6T, Prefixlen];
+
+export interface _IPAddressBaseClsT {
+  _ipIntFromPrefix:
+    | ((prefixlen: Prefixlen) => number)
+    | ((prefixlen: Prefixlen) => bigint);
+  _prefixFromIpInt:
+    | ((ipInt: number) => Prefixlen)
+    | ((ipInt: bigint) => number);
+  _reportInvalidNetmask: (netmaskStr: string) => never;
+  _prefixFromPrefixString: (prefixlenStr: string) => Prefixlen;
+  _prefixFromIpString: (ipStr: string) => number;
+  _splitAddrPrefix: (
+    address: UnparsedIPv4Address
+  ) =>
+    | [UnparsedIPv4Address, Prefixlen]
+    | ((address: UnparsedIPv4Network) => [UnparsedIPv4Address, Prefixlen])
+    | ((address: UnparsedIPv6Address) => [UnparsedIPv6Address, Prefixlen])
+    | ((address: UnparsedIPv6Network) => [UnparsedIPv6Address, Prefixlen]);
 }
 
-export interface NetworkContainer {
-  contains: (other: NetworkObj & HasIP) => boolean;
+export interface _IPAddressBaseT {
+  exploded: string;
+  compressed: string;
+  reversePointer: string;
+  version: 4 | 6;
+  _checkIntAddress: ((address: number) => void) | ((address: bigint) => void);
+  _checkPackedAddress: (address: ByteArray, expectedLen: number) => void;
 }
 
-export interface MayIterHosts extends HasNetworkAddress {
-  _addressClass: typeof IPv4Address;
-  broadcastAddress: IPv4Address;
-}
+export type _BaseAddressClsT = _IPAddressBaseClsT;
 
-export interface Stringable {
+export interface _BaseAddressT extends _IPAddressBaseT {
+  toNumber: () => number | (() => bigint);
+  equals: (other: _BaseAddressT) => boolean;
+  lessThan: (other: _BaseAddressT) => boolean;
+  add: (other: _BaseAddressT) => number | ((other: _BaseAddressT) => bigint);
+  sub: (other: _BaseAddressT) => number | ((other: _BaseAddressT) => bigint);
+  toRepr: () => string;
   toString: () => string;
+  _getAddressKey: () => [4, _BaseAddressT] | [6, _BaseAddressT];
 }
 
-export interface Numberable {
-  toNumber: () => IPInteger;
-}
-
-export interface PrefixLengthable {
-  maxPrefixlen: number;
-}
-
-export interface HasVersion {
-  version: IPVersion;
-}
-
-export interface HasIP {
-  _ip: IPInteger;
-}
-
-export interface ConvertsToString extends HasIP {
-  _stringFromIpInt(ipInt: IPInteger): string;
-}
-
-export type Comparable = HasIP & HasVersion & Stringable;
-
-export interface Versionable extends HasVersion, PrefixLengthable {
-  _ALL_ONES: IPInteger;
-}
-
-export interface PrefixToPrefixStringable extends Versionable {
-  _reportInvalidNetmask: _IPAddressBaseT["_reportInvalidNetmask"];
-}
-
-export interface PrefixToIPStringable
-  extends PrefixToPrefixStringable,
-    Pick<_IPAddressBaseT, "_prefixFromIpInt"> {
-  _ipIntFromString: (ipStr: string) => number;
-}
-
-export interface Explodable {
+interface _BaseT {
   _explodeShorthandIpString: () => string;
-}
-
-export interface ReversePointerable {
   _reversePointer: () => string;
 }
 
-export interface SupportsOctetParsing {
-  _parseOctet: (typeof IPv4Address)["_parseOctet"];
+export interface _BaseV4ClsT {
+  _version: 4;
+  _ALL_ONES: number;
+  _maxPrefixlen: 32;
+  _netmaskCache: Record<NetmaskCacheKey, V4NetmaskCacheValue>;
+  _makeNetmask: (arg: NetmaskCacheKey) => V4NetmaskCacheValue;
+  _ipIntFromString: (ipStr: string) => number;
+  _parseOctet: (octet: string) => number;
+  _stringFromIpInt: (ipInt: number) => string;
 }
 
-export interface Netmaskable {
-  maxPrefixlen: typeof IPv4LENGTH | typeof IPv6LENGTH;
-  _netmaskCache: Record<NetmaskCacheKey, V4NetmaskCacheValue>;
-  _prefixFromPrefixString: (prefixlenStr: string) => Prefixlen;
-  _prefixFromIpString: (ipStr: string) => Prefixlen;
-  _ipIntFromPrefix: (prefixlen: Prefixlen) => IPInteger;
+export interface _BaseV4T extends _BaseT {
+  version: 4;
+  maxPrefixlen: 32;
 }
+
+export interface _BaseV6ClsT {
+  _version: 6;
+  _ALL_ONES: bigint;
+  _HEXTET_COUNT: 8;
+  _HEX_DIGITS: Set<string>;
+  _maxPrefixlen: 128;
+  _netmaskCache: Record<NetmaskCacheKey, V6NetmaskCacheValue>;
+  _makeNetmask: (arg: NetmaskCacheKey) => V6NetmaskCacheValue;
+  _ipIntFromString: (ipStr: string) => bigint;
+  _parseHextet: (hextet: string) => number;
+  _compressHextets: (hextets: string[]) => string[];
+  _stringFromIpInt: (ipInt: bigint) => string;
+  _splitScopeId: (ipStr: string) => [string, string | null];
+}
+
+export interface _BaseV6T extends _BaseT {
+  version: 6;
+  maxPrefixlen: 128;
+}
+
+export type _BaseVAny = _BaseV4T | _BaseV6T;
+export type _BaseVAnyCls = _BaseV4ClsT | _BaseV6ClsT;
+
+export interface IPv4AddressClsT
+  extends _BaseV4ClsT,
+    Omit<_BaseAddressClsT, "_splitAddrPrefix"> {
+  _ipIntFromPrefix: (prefixlen: Prefixlen) => number;
+  _prefixFromIpInt: (ipInt: number) => number;
+  _splitAddrPrefix: (
+    address: UnparsedIPv4Address
+  ) => [UnparsedIPv4Address, Prefixlen];
+}
+
+export interface IPv4AddressT
+  extends _BaseV4T,
+    Omit<
+      _BaseAddressT,
+      "version" | "toNumber" | "_getAddressKey" | "add" | "sub"
+    > {
+  _checkIntAddress: (address: number) => void;
+  toNumber: () => number;
+  _getAddressKey: () => [4, IPv4AddressT];
+  add: (other: IPv4AddressT) => number;
+  sub: (other: IPv4AddressT) => number;
+}
+export interface IPv6AddressClsT
+  extends _BaseV6ClsT,
+    Omit<_BaseAddressClsT, "_splitAddrPrefix"> {
+  _ipIntFromPrefix: (prefixlen: Prefixlen) => bigint;
+  _prefixFromIpInt: (ipInt: bigint) => number;
+  _splitAddrPrefix: (
+    address: UnparsedIPv6Address
+  ) => [UnparsedIPv6Address, Prefixlen];
+}
+
+export interface IPv6AddressT
+  extends _BaseV6T,
+    Omit<
+      _BaseAddressT,
+      "version" | "toNumber" | "equals" | "_getAddressKey" | "add" | "sub"
+    > {
+  _scopeId: string | null;
+  _checkIntAddress: (address: bigint) => void;
+  toNumber: () => bigint;
+  equals: (other: IPv6AddressT) => boolean;
+  _getAddressKey: () => [6, IPv6AddressT];
+  add: (other: IPv6AddressT) => bigint;
+  sub: (other: IPv6AddressT) => bigint;
+}
+
+export type IPvAnyAddressClsT = IPv4AddressClsT | IPv6AddressClsT;
+export type IPvAnyAddressT = IPv4AddressT | IPv6AddressT;

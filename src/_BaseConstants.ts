@@ -1,5 +1,5 @@
-import { _BaseNetworkT } from "./_BaseNetwork";
+import { NetworkInstance } from "./interfaces";
 
 export class _BaseConstants {
-  static _privateNetworks: _BaseNetworkT[] = [];
+  static _privateNetworks: NetworkInstance[] = [];
 }

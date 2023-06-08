@@ -7,11 +7,10 @@ import {
   ReversePointerable,
   Stringable,
 } from "./interfaces";
-import { AddressTypeError, NetmaskTypeError } from "./errors";
+import { AddressValueError, NetmaskValueError } from "./internal";
 import {
   ByteArray,
   IPInteger,
-  IPVersion,
   Prefixlen,
   UnparsedAddress,
   UnparsedNetwork,
@@ -25,33 +24,10 @@ import {
   strIsDigit,
 } from "./utilities";
 import { isBigInt, isByteArray, isNumber, isString } from "./typeGuards";
+
 /**
  * The mother class
  */
-export interface _IPAddressBaseT {
-  new (): _IPAddressBaseTInstance;
-  // class methods
-  _ipIntFromPrefix: (prefixlen: Prefixlen) => IPInteger;
-  _prefixFromIpInt: (ipInt: IPInteger) => Prefixlen;
-  _reportInvalidNetmask: (netmaskStr: string) => never;
-  _prefixFromPrefixString: (prefixlenStr: string) => Prefixlen;
-  _prefixFromIpString: (ipStr: string) => Prefixlen;
-  _splitAddrPrefix: (
-    address: string | IPInteger | ByteArray
-  ) => [string | IPInteger | ByteArray, number];
-}
-
-export interface _IPAddressBaseTInstance {
-  // @property
-  exploded: string;
-  compressed: string;
-  reversePointer: string;
-  version: IPVersion;
-  // instance
-  _checkIntAddress: (address: IPInteger) => void; // throws if invalid
-  _checkPackedAddress: (address: ByteArray, expectedLen: number) => void;
-}
-
 export const _IPAddressBaseStruct = {
   // @property
   exploded: (self: Explodable): string => {
@@ -70,11 +46,11 @@ export const _IPAddressBaseStruct = {
   ): void => {
     if (address < 0) {
       const msg = `${address} (< 0) is not permitted as an IPv${cls._version} address`;
-      throw new AddressTypeError(msg);
+      throw new AddressValueError(msg);
     }
     if (address > cls._ALL_ONES) {
       const msg = `${address} (> 2**${cls._maxPrefixlen}) is not permitted as an IPv${cls._version} address`;
-      throw new AddressTypeError(msg);
+      throw new AddressValueError(msg);
     }
   }, // throws if invalid
   _checkPackedAddress: (
@@ -85,7 +61,7 @@ export const _IPAddressBaseStruct = {
     const addressLen = address.length;
     if (addressLen !== expectedLen) {
       const msg = `'${address}' (len ${addressLen} != ${expectedLen}) is not permitted as an IPv${cls._version} address.`;
-      throw new AddressTypeError(msg);
+      throw new AddressValueError(msg);
     }
   },
   // class methods
@@ -118,7 +94,7 @@ export const _IPAddressBaseStruct = {
   },
   _reportInvalidNetmask: (netmaskStr: string): never => {
     const msg = `${netmaskStr} is not a valid netmask`;
-    throw new NetmaskTypeError(msg);
+    throw new NetmaskValueError(msg);
   },
   _prefixFromPrefixString: (
     cls: AddressClass | NetworkClass,
@@ -142,11 +118,11 @@ export const _IPAddressBaseStruct = {
   },
   _prefixFromIpString: (cls: AddressClass, ipStr: string): number => {
     // Parse the netmask/hostmask like an IP address.
-    let ipInt = -1;
+    let ipInt: bigint | number = -1;
     try {
       ipInt = cls._ipIntFromString(ipStr);
     } catch (err: unknown) {
-      if (err instanceof AddressTypeError) {
+      if (err instanceof AddressValueError) {
         cls._reportInvalidNetmask(ipStr);
       }
     }
@@ -167,7 +143,7 @@ export const _IPAddressBaseStruct = {
     try {
       return cls._prefixFromIpInt(inverted);
     } catch (err: unknown) {
-      cls._reportInvalidNetmask(ipStr);
+      return cls._reportInvalidNetmask(ipStr);
     }
   },
   _splitAddrPrefix,

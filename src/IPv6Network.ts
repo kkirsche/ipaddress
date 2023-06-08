@@ -1,5 +1,6 @@
 import {
   ByteArray,
+  IPInteger,
   IPVersion,
   IPv6ALLONES,
   IPv6LENGTH,
@@ -111,7 +112,7 @@ export class IPv6Network {
    * @returns {Prefixlen} An integer, the prefix length.
    * @throws {TypeError} If the input intermingles zeroes & ones.
    */
-  static _prefixFromIpInt(ipInt: number): Prefixlen {
+  static _prefixFromIpInt(ipInt: IPInteger): Prefixlen {
     return _IPAddressBaseStruct._prefixFromIpInt(IPv4Address, ipInt);
   }
 
@@ -412,8 +413,8 @@ export class IPv6Network {
    * @returns {bigint} A bigint, the IPv6 address.
    * @throws {AddressValueError} if ipStr isn't a valid IPv6 address.
    */
-  static _ipBigIntFromString(ipStr: string): bigint {
-    return _BaseV6Struct._ipBigIntFromString(IPv6Address, ipStr);
+  static _ipIntFromString(ipStr: string): bigint {
+    return _BaseV6Struct._ipIntFromString(IPv6Address, ipStr);
   }
 
   /**
@@ -484,7 +485,7 @@ export class IPv6Network {
     return IPv6Address._maxPrefixlen;
   }
 
-  get version(): 6 {
+  get version(): IPVersion {
     return IPv6Address._version;
   }
 

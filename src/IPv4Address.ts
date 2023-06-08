@@ -1,12 +1,16 @@
 import {
   ByteArray,
+  IPv4AddressT,
+  UnparsedIPv4Address,
+  V4NetmaskCacheValue,
+  _BaseAddressT,
+} from "./interfaces";
+import {
   IPInteger,
   IPv4ALLONES,
   IPv4LENGTH,
   NetmaskCacheKey,
   Prefixlen,
-  UnparsedIPv4Address,
-  V4NetmaskCacheValue,
 } from "./constants";
 import { intFromBytes, isSafeNumber, v4IntToPacked } from "./utilities";
 import { isBigInt, isNumber } from "./typeGuards";
@@ -29,13 +33,13 @@ import { _IPv4Constants } from "./_IPv4Constants";
  * @throws {AddressValueError} If ipaddress isn't a valid IPv4 address.
  * @returns {IPv4Address} The IPv4Address instance
  */
-export class IPv4Address {
+export class IPv4Address implements IPv4AddressT {
   static readonly _version = 4;
   static readonly _ALL_ONES = IPv4ALLONES;
   static readonly _maxPrefixlen = IPv4LENGTH;
   static readonly _constants = _IPv4Constants;
   static _netmaskCache: Record<NetmaskCacheKey, V4NetmaskCacheValue> = {};
-  _ip: number;
+  _ip: IPInteger; // number
 
   /**
    * Represent and manipulate single IPv4 Addresses.
@@ -82,7 +86,7 @@ export class IPv4Address {
     }
 
     // we have a string or we assume it behaves like one.
-    if (address.includes("/")) {
+    if (address.indexOf("/") !== -1) {
       throw new AddressValueError(`Unexpected '/' in ${address}`);
     }
 
@@ -220,26 +224,26 @@ export class IPv4Address {
     return result;
   }
 
-  equals(this: IPv4Address, other: IPv4Address): boolean {
+  equals(this: IPv4Address, other: _BaseAddressT): boolean {
     return _BaseAddressStruct.equals(this, other);
   }
 
-  lessThan(this: IPv4Address, other: IPv4Address): boolean {
+  lessThan(this: IPv4Address, other: _BaseAddressT): boolean {
     return _BaseAddressStruct.lessThan(this, other);
   }
 
-  add(this: IPv4Address, other: IPv4Address): number {
+  add(this: IPv4Address, other: IPv4AddressT): number {
     const result = _BaseAddressStruct.add(this, other);
     if (isBigInt(result)) {
-      throw new Error("Unexpected bgiint in IPv4 addition");
+      throw new Error("Unexpected bigint in IPv4 addition");
     }
     return result;
   }
 
-  sub(this: IPv4Address, other: IPv4Address): number {
+  sub(this: IPv4Address, other: IPv4AddressT): number {
     const result = _BaseAddressStruct.sub(this, other);
     if (isBigInt(result)) {
-      throw new Error("Unexpected bgiint in IPv4 addition");
+      throw new Error("Unexpected bigint in IPv4 subtraction");
     }
     return result;
   }
@@ -326,7 +330,7 @@ export class IPv4Address {
     return IPv4Address._version;
   }
 
-  get maxPrefixlen() {
+  get maxPrefixlen(): 32 {
     return IPv4Address._maxPrefixlen;
   }
   // END: _BaseV4

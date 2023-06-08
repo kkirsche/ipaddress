@@ -1,5 +1,4 @@
-import { IPv4Address } from "./IPv4Address";
-import { IPv4Network } from "./IPv4Network";
+import { IPv4Address, IPv4Network } from "./internal";
 
 export class _IPv4Constants {
   static readonly _linklocalNetwork = new IPv4Network("169.254.0.0/16");

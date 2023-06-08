@@ -1,31 +1,35 @@
 import {
   ByteArray,
+  IPv6AddressT,
+  UnparsedIPv6Address,
+  V6NetmaskCacheValue,
+  _BaseAddressT,
+} from "./interfaces";
+import {
+  IPInteger,
   IPv6ALLONES,
   IPv6LENGTH,
   NetmaskCacheKey,
   Prefixlen,
-  UnparsedIPv6Address,
-  V6NetmaskCacheValue,
 } from "./constants";
 import { intFromBytes, isSafeNumber, v6IntToPacked } from "./utilities";
 import { isBigInt, isByteArray, isNull, isNumber } from "./typeGuards";
 
 import { AddressValueError } from "./AddressValueError";
 import { IPv4Address } from "./IPv4Address";
-import { IPv4AddressInstance } from "./interfaces";
 import { _BaseAddressStruct } from "./_BaseAddress";
 import { _BaseV6Struct } from "./_BaseV6";
 import { _IPAddressBaseStruct } from "./_IPAddressBase";
 
-export class IPv6Address {
+export class IPv6Address implements IPv6AddressT {
   static readonly _version = 6;
   static readonly _ALL_ONES = IPv6ALLONES;
   static readonly _HEXTET_COUNT = 8;
   static readonly _HEX_DIGITS = new Set("0123456789ABCDEFabcdef");
   static readonly _maxPrefixlen = IPv6LENGTH;
   static _netmaskCache: Record<NetmaskCacheKey, V6NetmaskCacheValue> = {};
-  _ip: bigint;
-  _scope_id: string | null;
+  _ip: IPInteger; // bigint
+  _scopeId: string | null;
 
   /**
    * Instantiate a new IPv6 address object.
@@ -43,7 +47,7 @@ export class IPv6Address {
     if (isBigInt(address)) {
       this._checkIntAddress(address);
       this._ip = address;
-      this._scope_id = null;
+      this._scopeId = null;
       return;
     }
 
@@ -55,18 +59,18 @@ export class IPv6Address {
         throw new AddressValueError("Unexpected number for IPv6 address");
       }
       this._ip = _ip;
-      this._scope_id = null;
+      this._scopeId = null;
       return;
     }
 
     // Assume input argument to be string or any object representation
     // which converts into a formatted IP address
     let addrStr = address;
-    if (addrStr.includes("/")) {
+    if (addrStr.indexOf("/") !== -1) {
       throw new AddressValueError(`Unexpected '/' in '${address}'`);
     }
-    [addrStr, this._scope_id] = IPv6Address._splitScopeId(addrStr);
-    this._ip = IPv6Address._ipBigIntFromString(addrStr);
+    [addrStr, this._scopeId] = IPv6Address._splitScopeId(addrStr);
+    this._ip = IPv6Address._ipIntFromString(addrStr);
   }
 
   // BEGIN: _IPAddressBase
@@ -134,7 +138,7 @@ export class IPv6Address {
    * @returns {Prefixlen} An integer, the prefix length.
    * @throws {TypeError} If the input intermingles zeroes & ones.
    */
-  static _prefixFromIpInt(ipInt: bigint): Prefixlen {
+  static _prefixFromIpInt(ipInt: IPInteger): Prefixlen {
     return _IPAddressBaseStruct._prefixFromIpInt(IPv6Address, ipInt);
   }
 
@@ -193,30 +197,30 @@ export class IPv6Address {
     return result;
   }
 
-  equals(this: IPv6Address, other: IPv6Address): boolean {
+  equals(this: IPv6Address, other: IPv6AddressT): boolean {
     const addressEqual = _BaseAddressStruct.equals(this, other);
     if (!addressEqual) {
       return false;
     }
-    return this._scope_id === other._scope_id;
+    return this._scopeId === other._scopeId;
   }
 
-  lessThan(this: IPv6Address, other: IPv6Address): boolean {
+  lessThan(this: IPv6Address, other: _BaseAddressT): boolean {
     return _BaseAddressStruct.lessThan(this, other);
   }
 
-  add(this: IPv6Address, other: IPv6Address): number {
+  add(this: IPv6Address, other: IPv6AddressT): bigint {
     const result = _BaseAddressStruct.add(this, other);
-    if (isBigInt(result)) {
-      throw new Error("Unexpected bgiint in IPv4 addition");
+    if (isNumber(result)) {
+      throw new Error("Unexpected number in IPv6 addition");
     }
     return result;
   }
 
-  sub(this: IPv6Address, other: IPv6Address): number {
+  sub(this: IPv6Address, other: IPv6AddressT): bigint {
     const result = _BaseAddressStruct.sub(this, other);
-    if (isBigInt(result)) {
-      throw new Error("Unexpected bgiint in IPv4 addition");
+    if (isNumber(result)) {
+      throw new Error("Unexpected number in IPv6 subtraction");
     }
     return result;
   }
@@ -228,7 +232,7 @@ export class IPv6Address {
   toString(this: IPv6Address): string {
     const ipStr = _BaseAddressStruct.toString(this);
 
-    return !isNull(this._scope_id) ? `${ipStr}%${this._scope_id}` : ipStr;
+    return !isNull(this._scopeId) ? `${ipStr}%${this._scopeId}` : ipStr;
   }
 
   _getAddressKey(this: IPv6Address): [6, IPv6Address] {
@@ -256,8 +260,8 @@ export class IPv6Address {
    * @returns {bigint} A bigint, the IPv6 address.
    * @throws {AddressValueError} if ipStr isn't a valid IPv6 address.
    */
-  static _ipBigIntFromString(ipStr: string): bigint {
-    return _BaseV6Struct._ipBigIntFromString(IPv6Address, ipStr);
+  static _ipIntFromString(ipStr: string): bigint {
+    return _BaseV6Struct._ipIntFromString(IPv6Address, ipStr);
   }
 
   /**
@@ -324,7 +328,7 @@ export class IPv6Address {
     return _BaseV6Struct._splitScopeId(ipStr);
   }
 
-  get maxPrefixlen() {
+  get maxPrefixlen(): 128 {
     return IPv6Address._maxPrefixlen;
   }
 
@@ -342,7 +346,7 @@ export class IPv6Address {
    * else null
    */
   get scope_id(): string | null {
-    return this._scope_id;
+    return this._scopeId;
   }
 
   /**
@@ -378,10 +382,10 @@ export class IPv6Address {
    * the IPv4 mapped address. Return null otherwise.
    */
   get ipv4Mapped(): IPv4Address | null {
-    if (this._ip >> BigInt(32) !== BigInt(0xffff)) {
+    if (BigInt(this._ip) >> BigInt(32) !== BigInt(0xffff)) {
       return null;
     }
-    let initializer: bigint | number = this._ip & BigInt(0xffffffff);
+    let initializer: bigint | number = BigInt(this._ip) & BigInt(0xffffffff);
     if (isSafeNumber(initializer)) {
       initializer = Number(initializer);
     }
@@ -396,14 +400,15 @@ export class IPv6Address {
    * @returns {[IPv4Address, IPv4Address]} Tuple of the [server, client] IPs or null
    * if the address doesn't appear to be a teredo address (doesn't start with 2001::/32)
    */
-  get teredo(): [IPv4AddressInstance, IPv4AddressInstance] | null {
-    if (this._ip >> BigInt(96) !== BigInt(0x20010000)) {
+  get teredo(): [IPv4Address, IPv4Address] | null {
+    if (BigInt(this._ip) >> BigInt(96) !== BigInt(0x20010000)) {
       return null;
     }
 
     let serverInitializer: bigint | number =
-      (this._ip >> BigInt(64)) & BigInt(0xffffffff);
-    let clientInitializer: bigint | number = ~this._ip & BigInt(0xffffffff);
+      (BigInt(this._ip) >> BigInt(64)) & BigInt(0xffffffff);
+    let clientInitializer: bigint | number =
+      ~BigInt(this._ip) & BigInt(0xffffffff);
     if (isSafeNumber(serverInitializer)) {
       serverInitializer = Number(serverInitializer);
     }
@@ -424,12 +429,12 @@ export class IPv6Address {
   }
 
   get sixtofour(): IPv4Address | null {
-    if (this._ip >> BigInt(112) !== BigInt(0x2002)) {
+    if (BigInt(this._ip) >> BigInt(112) !== BigInt(0x2002)) {
       return null;
     }
 
     let initializer: bigint | number =
-      (this._ip >> BigInt(80)) & BigInt(0xffffffff);
+      (BigInt(this._ip) >> BigInt(80)) & BigInt(0xffffffff);
     if (isSafeNumber(initializer)) {
       initializer = Number(initializer);
     }

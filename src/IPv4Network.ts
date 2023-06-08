@@ -1,5 +1,6 @@
 import {
   ByteArray,
+  IPInteger,
   IPVersion,
   IPv4ALLONES,
   IPv4LENGTH,
@@ -140,7 +141,7 @@ export class IPv4Network {
    * @returns {Prefixlen} An integer, the prefix length.
    * @throws {TypeError} If the input intermingles zeroes & ones.
    */
-  static _prefixFromIpInt(ipInt: number): Prefixlen {
+  static _prefixFromIpInt(ipInt: IPInteger): Prefixlen {
     return _IPAddressBaseStruct._prefixFromIpInt(IPv4Address, ipInt);
   }
 
@@ -487,7 +488,7 @@ export class IPv4Network {
   get maxPrefixlen() {
     return IPv4Network._maxPrefixlen;
   }
-  get version(): 4 {
+  get version(): IPVersion {
     return IPv4Network._version;
   }
   // END: _BaseV4

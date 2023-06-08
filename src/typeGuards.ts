@@ -1,4 +1,4 @@
-import { ByteArray } from "./constants";
+import { ByteArray } from "./interfaces";
 
 export function isUndefined(v: unknown): v is undefined {
   return v === undefined;

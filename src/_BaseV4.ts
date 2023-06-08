@@ -1,10 +1,9 @@
+import { IPv4Address, NetmaskValueError } from "./internal";
 import { IPv4AddressClass, IPv4NetworkClass, Stringable } from "./interfaces";
 import { intFromBytes, intToBytes, strIsAscii, strIsDigit } from "./utilities";
 import { isNumber, isUndefined } from "./typeGuards";
 
 import { AddressValueError } from "./AddressValueError";
-import { IPv4Address } from "./IPv4Address";
-import { NetmaskValueError } from "./NetmaskValueError";
 import { V4NetmaskCacheValue } from "./constants";
 
 export const _BaseV4Struct = {

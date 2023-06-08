@@ -1,12 +1,14 @@
+import {
+  AddressValueError,
+  IPv4Address,
+  IPv6Address,
+  IPv6Interface,
+  IPv6Network,
+} from "./internal";
 import { IPv6AddressClass, IPv6Class, IPv6Instance } from "./interfaces";
 import { NetmaskCacheKey, V6NetmaskCacheValue } from "./constants";
 import { isBigInt, isNull, isNumber } from "./typeGuards";
 
-import { AddressValueError } from "./AddressValueError";
-import { IPv4Address } from "./IPv4Address";
-import { IPv6Address } from "./IPv6Address";
-import { IPv6Interface } from "./IPv6Interface";
-import { IPv6Network } from "./IPv6Network";
 import { isSuperset } from "./utilities";
 
 export const _BaseV6Struct = {
@@ -31,7 +33,7 @@ export const _BaseV6Struct = {
 
     return cls._netmaskCache[arg];
   },
-  _ipBigIntFromString: (cls: IPv6AddressClass, ipStr: string): bigint => {
+  _ipIntFromString: (cls: IPv6AddressClass, ipStr: string): bigint => {
     if (ipStr.trim().length === 0) {
       throw new AddressValueError("Address cannot be empty");
     }
@@ -48,7 +50,7 @@ export const _BaseV6Struct = {
 
     // If the address has an IPv4-style suffix, convert it to hexadecimal.
     const lastItem = parts.length - 1;
-    if (parts[lastItem].includes(".")) {
+    if (parts[lastItem].indexOf(".") !== -1) {
       let ipv4Int: IPv4Address["_ip"];
       try {
         const popped = parts.pop();
@@ -167,7 +169,7 @@ export const _BaseV6Struct = {
         throw new AddressValueError(`${err.message} in '${ipStr}'`);
       }
     }
-    throw new Error("Unexpected error in _ipBigIntFromString");
+    throw new Error("Unexpected error in _ipIntFromString");
   },
   _parseHextet: (cls: IPv6AddressClass, hextetStr: string): number => {
     // Reject non-ascii digits.
@@ -265,7 +267,7 @@ export const _BaseV6Struct = {
       ipStr = obj.toString();
     }
 
-    const ipInt = cls._ipBigIntFromString(ipStr);
+    const ipInt = cls._ipIntFromString(ipStr);
     const hexStr = `${ipInt.toString(16)}${"0".repeat(32)}`.slice(0, 32);
     const parts = [];
     for (let x = 0; x < 32; x + 4) {
@@ -287,13 +289,13 @@ export const _BaseV6Struct = {
   },
   _splitScopeId: (ipStr: string): [string, string | null] => {
     const parts = ipStr.split("%");
-    let addr = parts[0];
-    let sep = ipStr.includes("%");
+    const addr = parts[0];
+    const sep = ipStr.indexOf("%") !== -1;
     let scopeId = parts[1] || null;
 
     if (!sep) {
       scopeId = null;
-    } else if (isNull(scopeId) || scopeId.includes("%")) {
+    } else if (isNull(scopeId) || scopeId.indexOf("%") !== -1) {
       throw new AddressValueError(`Invalid IPv6 address: '${ipStr}'`);
     }
     return [addr, scopeId];

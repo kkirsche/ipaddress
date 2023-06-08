@@ -4,70 +4,15 @@ import {
   NetworkInstance,
   Stringable,
 } from "./interfaces";
-import { IPInteger, IPVersion, Netmask } from "./constants";
 
-import { IPv4Address } from "./IPv4Address";
-import { _BaseConstants } from "./_BaseConstants";
-import { _IPAddressBaseT } from "./_IPAddressBase";
+import { IPVersion } from "./constants";
 import { isNull } from "./typeGuards";
 import { isSafeNumber } from "./utilities";
 
-/**
- * A generic IP network object.
- * This IP interface contains the version independent methods which are
- * used by networks.
- */
-export interface _BaseNetworkT extends _IPAddressBaseT {
-  new (): _BaseNetworkTInstance;
-  _isSubnetOf: (a: _BaseNetworkT, b: _BaseNetworkT) => boolean;
-  _constants: _BaseConstants;
-}
-
-export interface _BaseNetworkTInstance {
-  // instance
-  toRepr: () => string;
-  toString: () => string;
-  hosts: () => Generator<AddressInstance>; // TODO: identify
-  iterate: () => Generator<AddressInstance>;
-  getItem: (n: IPInteger) => AddressInstance;
-  lessThan: (other: NetworkInstance) => boolean;
-  equals: (other: NetworkInstance) => boolean;
-  // hash: () => bigint;
-  contains: (other: AddressInstance) => boolean;
-  overlaps: (other: AddressInstance) => boolean;
-  addressExclude: (other: AddressInstance) => _BaseNetworkT[];
-  compareNetworks: (other: NetworkInstance) => 1 | 0 | -1;
-  _getNetworkKey: () => [IPVersion, AddressInstance, Netmask];
-  subnetOf: (other: NetworkInstance) => boolean;
-  supernetOf: (other: NetworkInstance) => boolean;
-  subnets: (
-    prefixlenDiff: number,
-    newPrefix: number | null
-  ) => Generator<NetworkInstance>;
-  supernet: (
-    prefixlenDiff: number,
-    newPrefix: number | null
-  ) => NetworkInstance;
-  // property
-  broadcastAddress: AddressInstance;
-  hostmask: AddressInstance;
-  withPrefixlen: string;
-  withNetmask: string;
-  withHostmask: string;
-  numAddresses: number;
-  prefixlen: number;
-  isMulticast: boolean;
-  isReserved: boolean;
-  isLinkLocal: boolean;
-  isPrivate: boolean;
-  isGlobal: boolean;
-  isUnspecified: boolean;
-  isLoopback: boolean;
-}
-function* hosts(
+function* hosts<O extends NetworkInstance>(
   cls: NetworkClass,
   obj: NetworkInstance
-): Generator<IPv4Address> {
+): Generator<O, void> {
   const network = obj.networkAddress.toNumber();
   const broadcast = obj.broadcastAddress.toNumber();
   for (let x = network + 1; x < broadcast; x++) {
