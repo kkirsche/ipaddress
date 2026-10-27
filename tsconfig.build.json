@@ -1,4 +1,10 @@
 {
   "extends": "./tsconfig.json",
-  "exclude": ["node_modules", ".yarn", "src/**/*.test.ts", "src/__fixtures__"]
+  "exclude": ["node_modules", ".yarn", "src/**/*.test.ts", "src/__fixtures__"],
+  "compilerOptions": {
+    // The sources aren't published, so maps to them would be broken links.
+    "declarationMap": false,
+    // Keep implementation details marked @internal out of the published types.
+    "stripInternal": true
+  }
 }

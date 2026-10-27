@@ -1,12 +1,29 @@
-# ipaddress
+# @ipaddress/core
+
+[![npm](https://img.shields.io/npm/v/@ipaddress/core)](https://www.npmjs.com/package/@ipaddress/core)
+[![CI](https://github.com/kkirsche/ipaddress/actions/workflows/ci.yml/badge.svg)](https://github.com/kkirsche/ipaddress/actions/workflows/ci.yml)
 
 A TypeScript port of the Python [`ipaddress`](https://docs.python.org/3/library/ipaddress.html) module.
 
 The port follows CPython's [`Lib/ipaddress.py`](https://github.com/python/cpython/blob/main/Lib/ipaddress.py)
 and is verified against the behavior of Python 3.15 (see [Compatibility testing](#compatibility-testing)).
+It has no dependencies and works with both `import` and `require` in Node.js 20+
+and bundlers.
+
+## Installation
+
+```sh
+npm install @ipaddress/core
+# or
+yarn add @ipaddress/core
+# or
+pnpm add @ipaddress/core
+```
+
+## Usage
 
 ```ts
-import { ipAddress, ipNetwork, collapseAddresses } from "ipaddress";
+import { ipAddress, ipNetwork, collapseAddresses } from "@ipaddress/core";
 
 const network = ipNetwork("192.0.2.0/24");
 network.contains(ipAddress("192.0.2.7")); // true
@@ -79,6 +96,13 @@ without a JavaScript counterpart are mapped as follows:
 Hashing (`__hash__`) and pickling (`__reduce__`) have no JavaScript
 equivalent and are not provided.
 
+## Upgrading from 1.x
+
+Version 1.x was split across `@ipaddress/core`, `@ipaddress/addresses`,
+`@ipaddress/networks`, `@ipaddress/interfaces` and `@ipaddress/constants`.
+Version 2 is a single package: uninstall the others and import everything from
+`@ipaddress/core`. See the [changelog](CHANGELOG.md) for the API changes.
+
 ## Development
 
 ```sh
@@ -105,3 +129,18 @@ To regenerate the fixtures with a different Python version:
 ```sh
 yarn fixtures  # runs python3 scripts/generate_fixtures.py
 ```
+
+### Releasing
+
+Releases are published to npm by the `Release` GitHub Actions workflow, using
+npm Trusted Publishing, so no npm token is stored anywhere.
+
+1. Bump the version: `npm version patch` (or `minor` / `major`). This updates
+   `package.json`, commits, and creates a `vX.Y.Z` tag.
+2. Push the commit and tag: `git push --follow-tags`.
+3. Create a GitHub release from the tag, e.g.
+   `gh release create vX.Y.Z --generate-notes`, or on GitHub under
+   **Releases → Draft a new release**.
+
+Publishing the release runs the checks and publishes the package with
+provenance.

@@ -341,6 +341,7 @@ export class IPv4Interface extends IPv4Address {
     return `${_stringFromIpInt(this._ip)}/${this._prefixlen}`;
   }
 
+  /** @internal */
   _eq(other: unknown): boolean | NotImplementedType {
     const addressEqual = super._eq(other);
     if (addressEqual === NotImplemented || !addressEqual) {
@@ -352,6 +353,7 @@ export class IPv4Interface extends IPv4Address {
     return this.network.equals(other.network);
   }
 
+  /** @internal */
   _lt(other: unknown): boolean | NotImplementedType {
     const addressLess = super._lt(other);
     if (addressLess === NotImplemented) {

@@ -498,6 +498,7 @@ export class IPv6Address extends _BaseAddress {
     return this._scopeId ? `${ipStr}%${this._scopeId}` : ipStr;
   }
 
+  /** @internal */
   _eq(other: unknown): boolean | NotImplementedType {
     const addressEqual = super._eq(other);
     if (addressEqual === NotImplemented) {
@@ -707,6 +708,7 @@ export class IPv6Interface extends IPv6Address {
     return `${super.toString()}/${this._prefixlen}`;
   }
 
+  /** @internal */
   _eq(other: unknown): boolean | NotImplementedType {
     const addressEqual = super._eq(other);
     if (addressEqual === NotImplemented || !addressEqual) {
@@ -720,6 +722,7 @@ export class IPv6Interface extends IPv6Address {
     return this.network.equals(other.network);
   }
 
+  /** @internal */
   _lt(other: unknown): boolean | NotImplementedType {
     const addressLess = super._lt(other);
     if (addressLess === NotImplemented) {

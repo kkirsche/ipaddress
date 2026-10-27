@@ -501,6 +501,7 @@ export abstract class _BaseAddress extends _IPAddressBase {
    */
   abstract toNumber(): number | bigint;
 
+  /** @internal */
   _eq(other: unknown): boolean | NotImplementedType {
     if (!(other instanceof _BaseAddress)) {
       return NotImplemented;
@@ -508,6 +509,7 @@ export abstract class _BaseAddress extends _IPAddressBase {
     return this._ip === other._ip && this.version === other.version;
   }
 
+  /** @internal */
   _lt(other: unknown): boolean | NotImplementedType {
     if (!(other instanceof _BaseAddress)) {
       return NotImplemented;
@@ -740,6 +742,7 @@ export abstract class _BaseNetwork<
     }
   }
 
+  /** @internal */
   _lt(other: unknown): boolean | NotImplementedType {
     if (!(other instanceof _BaseNetwork)) {
       return NotImplemented;
@@ -756,6 +759,7 @@ export abstract class _BaseNetwork<
     return false;
   }
 
+  /** @internal */
   _eq(other: unknown): boolean | NotImplementedType {
     if (!(other instanceof _IPAddressBase)) {
       return NotImplemented;
