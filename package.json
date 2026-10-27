@@ -1,6 +1,6 @@
 {
   "name": "ipaddress",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "A typescript port of the Python ipaddress module",
   "keywords": [
     "ip address",
