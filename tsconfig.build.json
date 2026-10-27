@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.json",
+  "exclude": ["node_modules", ".yarn", "src/**/*.test.ts", "src/__fixtures__"]
+}

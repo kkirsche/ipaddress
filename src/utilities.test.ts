@@ -1,109 +1,64 @@
 import {
+  bytesRepr,
+  formatString,
   intFromBytes,
   intToBytes,
+  pyRepr,
+  pySplit,
   v4IntToPacked,
   v6IntToPacked,
 } from "./utilities";
+import { ValueError } from "./errors";
 
-import { isBigInt } from "./typeGuards";
+const IPV6_BYTES = Uint8Array.from([
+  0x20, 0x01, 0xdb, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00,
+]); // 2001:db00::
+const IPV6_INT = 42544930009679042476373200873331884032n;
 
 describe("integer methods", () => {
   describe("intToBytes", () => {
     it.each([
       [3232235521, 4, [0xc0, 0xa8, 0x00, 0x01]], // IPv4 - 192.168.0.1
-      [
-        42544930009679042476373200873331884032,
-        16,
-        [
-          0x20, // first octet
-          0x01, // second
-          0xdb, // third
-          0x00, // fourth
-          0x00, // fifth
-          0x00, // sixth
-          0x00, // seventh
-          0x00, // eighth
-          0x00, // ninth
-          0x00, // tenth
-          0x00, // eleventh
-          0x00, // twelfth
-          0x00, // thirteenth
-          0x00, // fourteenth
-          0x00, // fifteenth
-          0x00, // sixteenth (IPv6 is 16 bytes / octets)
-        ],
-      ], // IPv6 - 2001:db00::0
-    ])("converts %d to byte array", (n, length, expected) => {
-      const result = intToBytes(n, length, "big");
-      expect(result).toStrictEqual(expected);
+      [3232235521n, 4, [0xc0, 0xa8, 0x00, 0x01]],
+      [IPV6_INT, 16, [...IPV6_BYTES]],
+      [0, 4, [0, 0, 0, 0]],
+    ])("converts %d to a %d byte array", (n, length, expected) => {
+      expect(intToBytes(n, length, "big")).toStrictEqual(
+        Uint8Array.from(expected)
+      );
+    });
+    it("supports little-endian byte order", () => {
+      expect(intToBytes(0x0102, 2, "little")).toStrictEqual(
+        Uint8Array.from([2, 1])
+      );
+    });
+    it("throws a RangeError when the integer does not fit", () => {
+      expect(() => intToBytes(256, 1)).toThrow(RangeError);
+      expect(() => intToBytes(-1, 4)).toThrow(RangeError);
     });
   });
+
   describe("intFromBytes", () => {
     it.each([
-      [[0xc0, 0xa8, 0x00, 0x01], 3232235521], // IPv4 - 192.168.0.1
-      [
-        [
-          0x20, // first octet
-          0x01, // second
-          0xdb, // third
-          0x00, // fourth
-          0x00, // fifth
-          0x00, // sixth
-          0x00, // seventh
-          0x00, // eighth
-          0x00, // ninth
-          0x00, // tenth
-          0x00, // eleventh
-          0x00, // twelfth
-          0x00, // thirteenth
-          0x00, // fourteenth
-          0x00, // fifteenth
-          0x00, // sixteenth (IPv6 is 16 bytes / octets)
-        ],
-        42544930009679042476373200873331884032,
-      ], // IPv6 - 2001:db00::0
-      [
-        [
-          0x20, // first octet
-          0x01, // second
-          0xdb, // third
-          0x00, // fourth
-          0x00, // fifth
-          0x00, // sixth
-          0x00, // seventh
-          0x00, // eighth
-          0x00, // ninth
-          0x00, // tenth
-          0x00, // eleventh
-          0x00, // twelfth
-          0x00, // thirteenth
-          0x00, // fourteenth
-          0x00, // fifteenth
-          0x00, // sixteenth (IPv6 is 16 bytes / octets)
-        ],
-        BigInt(42544930009679042476373200873331884032),
-      ], // IPv6 - 2001:db00::0
-    ])("converts byte array to digits", (bytes, expected) => {
-      const result = intFromBytes(bytes, "big", false);
-      if (isBigInt(result)) {
-        expect(result).toStrictEqual(BigInt(expected));
-      } else {
-        expect(result).toStrictEqual(expected);
-      }
+      [Uint8Array.from([0xc0, 0xa8, 0x00, 0x01]), 3232235521n],
+      [IPV6_BYTES, IPV6_INT],
+      [new Uint8Array(), 0n],
+    ])("converts %p to an integer", (bytes, expected) => {
+      expect(intFromBytes(bytes, "big")).toStrictEqual(expected);
+    });
+    it("does not modify its input", () => {
+      const bytes = Uint8Array.from([1, 2]);
+      expect(intFromBytes(bytes, "little")).toBe(0x0201n);
+      expect(bytes).toStrictEqual(Uint8Array.from([1, 2]));
     });
   });
+
   it.each([
-    [3232235521, 4],
-    [42544930009679042476373200873331884032, 16],
-    [BigInt(42544930009679042476373200873331884032), 16],
+    [3232235521n, 4],
+    [IPV6_INT, 16],
   ])("converts the integer %d to a byte array and back safely", (n, length) => {
-    const bytes = intToBytes(n, length, "big");
-    const numberFromArray = intFromBytes(bytes, "big");
-    if (isBigInt(numberFromArray)) {
-      expect(numberFromArray).toStrictEqual(BigInt(n));
-    } else {
-      expect(numberFromArray).toStrictEqual(n);
-    }
+    expect(intFromBytes(intToBytes(n, length, "big"), "big")).toBe(n);
   });
 });
 
@@ -112,51 +67,70 @@ describe("pack methods", () => {
     it.each([
       [0, [0x00, 0x00, 0x00, 0x00]], // 0.0.0.0
       [3232235521, [0xc0, 0xa8, 0x00, 0x01]], // 192.168.0.1
-      [4294967295, [0xff, 0xff, 0xff, 0xff]], // 255.255.255.255
+      [4294967295n, [0xff, 0xff, 0xff, 0xff]], // 255.255.255.255
     ])("packs the v4 address %d to a byte array", (address, expected) => {
-      expect(v4IntToPacked(address)).toStrictEqual(expected);
+      expect(v4IntToPacked(address)).toStrictEqual(Uint8Array.from(expected));
     });
-    it("throws a type error when above the maximum address", () => {
-      const maximumIPv4Addr = 2 ** 32 - 1;
-      expect(() => {
-        v4IntToPacked(maximumIPv4Addr + 1);
-      }).toThrowError(TypeError);
+    it.each([[2 ** 32], [-1]])("throws a ValueError for %d", (address) => {
+      expect(() => v4IntToPacked(address)).toThrow(
+        new ValueError("Address negative or too large for IPv4")
+      );
     });
-    it("throws a type error when a negative value is received", () => {
-      expect(() => {
-        v4IntToPacked(-1);
-      }).toThrowError(TypeError);
+    it("throws a TypeError for non-integers", () => {
+      expect(() => v4IntToPacked(1.5)).toThrow(TypeError);
     });
   });
   describe("v6IntToPacked", () => {
     it.each([
-      [
-        0,
-        [
-          0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-          0x00, 0x00, 0x00, 0x00, 0x00,
-        ],
-      ], // ::
-      [
-        BigInt("340282366920938463463374607431768211455"),
-        [
-          0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-          0xff, 0xff, 0xff, 0xff, 0xff,
-        ],
-      ], // IPv6 - ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+      [0, new Uint8Array(16)],
+      [2n ** 128n - 1n, new Uint8Array(16).fill(0xff)],
     ])("packs the v6 address %d to a byte array", (address, expected) => {
       expect(v6IntToPacked(address)).toStrictEqual(expected);
     });
-    it("throws a type error when above the maximum address", () => {
-      const maximumIPv6Addr = BigInt("340282366920938463463374607431768211455");
-      expect(() => {
-        v6IntToPacked(maximumIPv6Addr + BigInt(1));
-      }).toThrowError(TypeError);
+    it.each([[2n ** 128n], [-1]])("throws a ValueError for %d", (address) => {
+      expect(() => v6IntToPacked(address)).toThrow(
+        new ValueError("Address negative or too large for IPv6")
+      );
     });
-    it("throws a type error when a negative value is received", () => {
-      expect(() => {
-        v6IntToPacked(-1);
-      }).toThrowError(TypeError);
-    });
+  });
+});
+
+describe("python helpers", () => {
+  it.each([
+    ["abc", "'abc'"],
+    ["it's", `"it's"`],
+    [`it's "x"`, `'it\\'s "x"'`],
+    ["a\\b", "'a\\\\b'"],
+    ["\n\t\r\x00\x7f", "'\\n\\t\\r\\x00\\x7f'"],
+    ["é١", "'é١'"],
+    ["\u2028", "'\\u2028'"],
+  ])("pyRepr(%j) is %s", (value, expected) => {
+    expect(pyRepr(value)).toBe(expected);
+  });
+
+  it("bytesRepr matches Python's repr of bytes", () => {
+    expect(bytesRepr(Uint8Array.from([0x27, 0x41, 0xff, 0x0a]))).toBe(
+      `b"'A\\xff\\n"`
+    );
+  });
+
+  it.each([
+    ["a:b:c", 1, ["a", "b:c"]],
+    ["a:b:c", 5, ["a", "b", "c"]],
+    ["", 2, [""]],
+  ])("pySplit(%j, ':', %d)", (value, maxsplit, expected) => {
+    expect(pySplit(value, ":", maxsplit)).toStrictEqual(expected);
+  });
+
+  it.each([
+    ["", "ab"],
+    ["5", "ab   "],
+    [">5", "   ab"],
+    ["^6", "  ab  "],
+    ["*^5s", "*ab**"],
+    ["05", "ab000"],
+    [".1", "a"],
+  ])("formatString('ab', %j)", (spec, expected) => {
+    expect(formatString("ab", spec)).toBe(expected);
   });
 });

@@ -21,10 +21,18 @@
     "name": "Kevin Kirsche",
     "email": "kev.kirsche@gmail.com"
   },
+  "main": "build/index.js",
+  "types": "build/index.d.ts",
+  "files": [
+    "build"
+  ],
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "fixtures": "python3 scripts/generate_fixtures.py > src/__fixtures__/python-ipaddress.json",
     "format": "prettier -w src",
-    "lint": "eslint",
-    "test": "jest"
+    "lint": "eslint src",
+    "test": "jest",
+    "typecheck": "tsc --noEmit"
   },
   "license": "MIT",
   "devDependencies": {

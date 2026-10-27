@@ -1,202 +1,135 @@
-import { ByteArray, ByteOrder } from "./interfaces";
-import { IPv4ALLONES, IPv6ALLONES } from "./constants";
-
-import { AddressValueError } from "./00-AddressValueError";
-
-/**
- * Check whether a given number or big integer is within the safe integer range.
- * @param {number | bigint} n The number to check if it is within a safe integer range.
- * @returns {boolean} True if `n` is between `Number.MIN_SAFE_INTEGER` and
- * `Number.MAX_SAFE_INTEGER`, `false` otherwise.
- */
-export function isSafeNumber(n: number | bigint): boolean {
-  return Number.MIN_SAFE_INTEGER <= n && n <= Number.MAX_SAFE_INTEGER;
-}
-
-/**
- * Convert a byte, represented as a number or big integer, to a number.
- * Bytes are 8 bits, so the maximum value is within the safe range.
- * @param {number | bigint} byte The byte to convert to a number.
- * @returns {number} The byte value as a number.
- * @throws {TypeError} Thrown when the value is not a safe number.
- */
-export function convertByteToNumber(byte: number | bigint): number {
-  if (isSafeNumber(byte)) {
-    return Number(byte);
-  } else {
-    throw new TypeError(
-      "Bytes are 8 bits. 8 bit unsigned integers have a value range of 0-255"
-    );
-  }
-}
+import { ByteOrder } from "./interfaces";
+import { AddressValueError, ValueError } from "./errors";
 
 /**
  * Convert an integer to a byte array.
  * Equivalent to https://docs.python.org/3/library/stdtypes.html#int.to_bytes
- * @param {bigint | number} n The integer to convert to bytes. This supports BigInt
- * as IPv6 addresses are above Number.MAX_SAFE_INTEGER.
- * @param {number} length The length of the desired byte array. For IPv4 addresses,
- * this is 4, for IPv6 addresses, this is 16.
- * @param {ByteOrder} [byteorder="big"] The byte order of the array. Big is commonly
- * referred to as network-byte order.
- * @returns {ByteArray} The byte array after conversion
+ * @param {bigint | number} n The non-negative integer to convert to bytes.
+ * @param {number} length The length of the desired byte array. For IPv4
+ * addresses, this is 4, for IPv6 addresses, this is 16.
+ * @param {ByteOrder} [byteorder="big"] The byte order of the array. Big is
+ * commonly referred to as network-byte order.
+ * @returns {Uint8Array} The byte array after conversion
+ * @throws {RangeError} If `n` is negative or does not fit in `length` bytes.
  */
 export function intToBytes(
   n: bigint | number,
   length = 1,
   byteorder: ByteOrder = "big"
-): ByteArray {
-  let order: ByteArray;
-  switch (byteorder) {
-    case "little":
-      order = Array(length)
-        .fill(0)
-        .map((_, i) => i);
-      break;
-    case "big":
-      order = Array(length)
-        .fill(0)
-        .map((_, i) => i)
-        .reverse();
-      break;
-    default:
-      throw new TypeError(`byteOrder must be either 'little' or 'big'`);
+): Uint8Array {
+  if (byteorder !== "big" && byteorder !== "little") {
+    throw new TypeError("byteorder must be either 'little' or 'big'");
   }
-  return (
-    order
-      // IPv6 addresses may be larger than we can support with number numbers,
-      // so we need to use big integers to represent those values
-      .map((i) => (BigInt(n) >> BigInt(i * 8)) & BigInt(0xff))
-      .map((byte) => convertByteToNumber(byte))
-  );
+  let value = BigInt(n);
+  if (value < 0n) {
+    throw new RangeError("can't convert negative int to unsigned");
+  }
+  const bytes = new Uint8Array(length);
+  for (let i = 0; i < length; i++) {
+    bytes[byteorder === "big" ? length - 1 - i : i] = Number(value & 0xffn);
+    value >>= 8n;
+  }
+  if (value !== 0n) {
+    throw new RangeError("int too big to convert");
+  }
+  return bytes;
 }
 
 /**
- * Convert a byte array to an integer or big integer.
+ * Convert a byte array to an unsigned big integer.
  * Equivalent to https://docs.python.org/3/library/stdtypes.html#int.from_bytes
- * @param {ByteArray} bytes The byte array to convert to an integer or big integer.
+ * @param {Uint8Array} bytes The byte array to convert to an integer.
  * @param {ByteOrder} byteOrder The byte order of `bytes`.
- * @param {boolean} signed Whether the integer is signed or unsigned.
- * @returns {bigint | number} The integer value as a number or big integer.
+ * @returns {bigint} The integer value.
  */
 export function intFromBytes(
-  bytes: ByteArray,
-  byteOrder: ByteOrder = "big",
-  signed = false
-): bigint | number {
-  let littleOrdered: ByteArray;
-  switch (byteOrder) {
-    case "little":
-      littleOrdered = bytes;
-      break;
-    case "big":
-      littleOrdered = bytes.reverse();
-      break;
-    default:
-      throw new TypeError("byteOrder must be either 'little' or 'big'");
+  bytes: Uint8Array,
+  byteOrder: ByteOrder = "big"
+): bigint {
+  if (byteOrder !== "big" && byteOrder !== "little") {
+    throw new TypeError("byteorder must be either 'little' or 'big'");
   }
-
-  let n = littleOrdered
-    .map((byte, idx) => BigInt(byte) << BigInt(idx * 8))
-    .reduce((sum, current) => sum + current, BigInt(0));
-  if (signed && littleOrdered) {
-    const littleOrderedLen = littleOrdered.length;
-    const lastByte = littleOrdered[littleOrderedLen - 1];
-    if (lastByte === undefined) {
-      throw new TypeError("No byte at location");
-    }
-    if (lastByte & 0x80) {
-      n = BigInt(1) << BigInt(8 * littleOrderedLen);
-    }
-  }
-
-  // convert the result back to a number if it's safe to do so.
-  if (Number.MIN_SAFE_INTEGER <= n && n <= Number.MAX_SAFE_INTEGER) {
-    return Number(n);
+  let n = 0n;
+  for (let i = 0; i < bytes.length; i++) {
+    const byte = bytes[byteOrder === "big" ? i : bytes.length - 1 - i];
+    n = (n << 8n) | BigInt(byte);
   }
   return n;
+}
+
+function toInteger(address: number | bigint, fnName: string): bigint {
+  if (typeof address === "bigint") {
+    return address;
+  }
+  if (typeof address === "number" && Number.isInteger(address)) {
+    return BigInt(address);
+  }
+  throw new TypeError(
+    `${fnName}() requires an integer, not ${typeName(address)}`
+  );
 }
 
 /**
  * Represent an address as 4 packed bytes in network (big-endian) order.
  * @param {number | bigint} address An integer representation of an IPv4 address.
- * @throws {TypeError} when `address` is larger than the maximum IPv4 address
- * or negative.
- * @returns {ByteArray} The packed byte array.
+ * @returns {Uint8Array} The integer address packed as 4 bytes in network
+ * (big-endian) order.
+ * @throws {ValueError} If the integer is negative or too large to be an IPv4
+ * IP address.
  */
-export function v4IntToPacked(address: number): ByteArray {
-  const lowestAddr = 0;
-  const highestAddr = IPv4ALLONES;
-
-  if (highestAddr < address) {
-    throw new TypeError("Address too large for IPv4");
+export function v4IntToPacked(address: number | bigint): Uint8Array {
+  try {
+    return intToBytes(toInteger(address, "v4IntToPacked"), 4, "big");
+  } catch (err: unknown) {
+    if (err instanceof RangeError) {
+      throw new ValueError("Address negative or too large for IPv4");
+    }
+    throw err;
   }
-  if (address < lowestAddr) {
-    throw new TypeError("Address is negative");
-  }
-
-  return intToBytes(address, 4, "big");
 }
 
 /**
  * Represent an address as 16 packed bytes in network (big-endian) order.
  * @param {number | bigint} address An integer representation of an IPv6 address.
- * @throws {TypeError} when `address` is larger than the maximum IPv6 address
- * or negative.
- * @returns {ByteArray} The integer address packed as 16 bytes in network (big-endian)
- * order.
+ * @returns {Uint8Array} The integer address packed as 16 bytes in network
+ * (big-endian) order.
+ * @throws {ValueError} If the integer is negative or too large to be an IPv6
+ * IP address.
  */
-export function v6IntToPacked(address: bigint): ByteArray {
-  const lowestAddr = 0;
-  // if we don't use big ints here, this will overflow
-  const highestAddr = IPv6ALLONES;
-  if (highestAddr < address) {
-    throw new TypeError("Address too large for IPv6");
+export function v6IntToPacked(address: number | bigint): Uint8Array {
+  try {
+    return intToBytes(toInteger(address, "v6IntToPacked"), 16, "big");
+  } catch (err: unknown) {
+    if (err instanceof RangeError) {
+      throw new ValueError("Address negative or too large for IPv6");
+    }
+    throw err;
   }
-  if (address < lowestAddr) {
-    throw new TypeError("Address is negative");
-  }
-
-  return intToBytes(address, 16, "big");
 }
 
 /**
  * Helper to split the netmask and raise AddressValueError if needed.
- * @param {string} address The address string.
- * @returns {[string, string]} The tuple of the address and mask.
+ * @param address The address, converted to a string before splitting.
+ * @returns {string[]} The address and, if present, the mask.
  */
-export function _splitOptionalNetmask(address: string): [string, string] {
-  const addr = address.split("/");
-  if (addr.length !== 2) {
-    throw new AddressValueError(`Only one '/' permitted in ${address}`);
+export function _splitOptionalNetmask(address: unknown): string[] {
+  const addr = String(address).split("/");
+  if (addr.length > 2) {
+    throw new AddressValueError(
+      `Only one '/' permitted in ${reprValue(address)}`
+    );
   }
-  return [addr[0], addr[1]];
+  return addr;
 }
 
-// TODO: _find_address_range
-
-export function strIsAscii(c: string): boolean {
-  // from byte 0 to byte 127 is ascii, so we validate that we're only in that range.
-  for (let idx = 0; idx < c.length; idx++) {
-    const codepoint = c.codePointAt(idx);
-    if (codepoint === undefined || !(0 <= codepoint && codepoint <= 127)) {
-      return false;
-    }
+/**
+ * Equivalent of Python's int.bit_length() for non-negative integers.
+ */
+export function bitLength(n: bigint): number {
+  if (n < 0n) {
+    n = -n;
   }
-  return true;
-}
-
-export function strIsDigit(c: string): boolean {
-  // digits are ASCII bytes 48 through 57
-  // 48 is 0
-  // 57 is 9
-  for (let idx = 0; idx < c.length; idx++) {
-    const codepoint = c.codePointAt(idx);
-    if (codepoint === undefined || !(48 <= codepoint && codepoint <= 57)) {
-      return false;
-    }
-  }
-  return true;
+  return n === 0n ? 0 : n.toString(2).length;
 }
 
 /**
@@ -205,26 +138,243 @@ export function strIsDigit(c: string): boolean {
  * @param bits maximum number of bits to count.
  * @returns {number} The number of zero bits on the right hand side of the number.
  */
-export function _countRighthandZeroBits(
-  number: bigint | number,
-  bits: number
-): number {
-  if (number === 0) {
+export function _countRighthandZeroBits(number: bigint, bits: number): number {
+  if (number === 0n) {
     return bits;
   }
-  const bigintNumber = BigInt(number);
-  const calculated = (~bigintNumber & (bigintNumber - BigInt(1))).toString(
-    2
-  ).length;
-  return Math.min(bits, calculated);
+  return Math.min(bits, bitLength(~number & (number - 1n)));
 }
 
-// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Set#implementing_basic_set_operations
-export function isSuperset<S extends Iterable<S>>(set: Set<S>, subset: S) {
-  for (const elem of subset) {
-    if (!set.has(elem)) {
-      return false;
+/**
+ * Equivalent of Python's str.isascii().
+ */
+export function strIsAscii(c: string): boolean {
+  // from byte 0 to byte 127 is ascii, so we validate that we're only in that range.
+  return [...c].every((ch) => ch.charCodeAt(0) <= 0x7f);
+}
+
+/**
+ * Equivalent of Python's str.isdigit() for ASCII strings.
+ */
+export function strIsDigit(c: string): boolean {
+  return /^[0-9]+$/.test(c);
+}
+
+/**
+ * Equivalent of Python's str.split(sep, maxsplit). Unlike String.split with a
+ * limit, the remainder of the string is kept in the final element.
+ */
+export function pySplit(s: string, sep: string, maxsplit: number): string[] {
+  const parts: string[] = [];
+  let start = 0;
+  while (parts.length < maxsplit) {
+    const idx = s.indexOf(sep, start);
+    if (idx === -1) {
+      break;
+    }
+    parts.push(s.slice(start, idx));
+    start = idx + sep.length;
+  }
+  parts.push(s.slice(start));
+  return parts;
+}
+
+/**
+ * Reverse a string by code point, like Python's s[::-1].
+ */
+export function reverseString(s: string): string {
+  return [...s].reverse().join("");
+}
+
+/**
+ * Format a bigint as zero-padded, lowercase hexadecimal.
+ */
+export function hex(n: bigint, width: number): string {
+  return n.toString(16).padStart(width, "0");
+}
+
+// Python's str.isprintable() is false for the Unicode "Other" (C*) and
+// "Separator" (Z*) categories, with the exception of the ASCII space.
+const NON_PRINTABLE = /[\p{C}\p{Z}]/u;
+
+/**
+ * Equivalent of Python's repr() for a str.
+ */
+export function pyRepr(s: string): string {
+  const quote = s.includes("'") && !s.includes('"') ? '"' : "'";
+  let out = quote;
+  for (const ch of s) {
+    const cp = ch.codePointAt(0) as number;
+    if (ch === quote || ch === "\\") {
+      out += `\\${ch}`;
+    } else if (ch === "\t") {
+      out += "\\t";
+    } else if (ch === "\n") {
+      out += "\\n";
+    } else if (ch === "\r") {
+      out += "\\r";
+    } else if (ch !== " " && NON_PRINTABLE.test(ch)) {
+      if (cp <= 0xff) {
+        out += `\\x${cp.toString(16).padStart(2, "0")}`;
+      } else if (cp <= 0xffff) {
+        out += `\\u${cp.toString(16).padStart(4, "0")}`;
+      } else {
+        out += `\\U${cp.toString(16).padStart(8, "0")}`;
+      }
+    } else {
+      out += ch;
     }
   }
-  return true;
+  return out + quote;
+}
+
+/**
+ * Equivalent of Python's repr() for a bytes object.
+ */
+export function bytesRepr(bytes: Uint8Array): string {
+  const quote = bytes.includes(0x27) && !bytes.includes(0x22) ? '"' : "'";
+  let out = `b${quote}`;
+  for (const byte of bytes) {
+    const ch = String.fromCharCode(byte);
+    if (ch === quote || ch === "\\") {
+      out += `\\${ch}`;
+    } else if (ch === "\t") {
+      out += "\\t";
+    } else if (ch === "\n") {
+      out += "\\n";
+    } else if (ch === "\r") {
+      out += "\\r";
+    } else if (byte < 0x20 || byte >= 0x7f) {
+      out += `\\x${byte.toString(16).padStart(2, "0")}`;
+    } else {
+      out += ch;
+    }
+  }
+  return out + quote;
+}
+
+/**
+ * Best-effort equivalent of Python's repr() for values that may be passed to
+ * the public API, used to build error messages identical to Python's.
+ */
+export function reprValue(value: unknown): string {
+  if (typeof value === "string") {
+    return pyRepr(value);
+  }
+  if (typeof value === "bigint") {
+    return value.toString();
+  }
+  if (typeof value === "number") {
+    return Number.isInteger(value) ? BigInt(value).toString() : String(value);
+  }
+  if (typeof value === "boolean") {
+    return value ? "True" : "False";
+  }
+  if (value === null || value === undefined) {
+    return "None";
+  }
+  if (value instanceof Uint8Array) {
+    return bytesRepr(value);
+  }
+  if (Array.isArray(value)) {
+    const items = value.map(reprValue);
+    return items.length === 1 ? `(${items[0]},)` : `(${items.join(", ")})`;
+  }
+  const withRepr = value as { toRepr?: () => string };
+  if (typeof withRepr.toRepr === "function") {
+    return withRepr.toRepr();
+  }
+  return String(value);
+}
+
+/**
+ * The Python type name equivalent to a JavaScript value, for error messages.
+ */
+export function typeName(value: unknown): string {
+  switch (typeof value) {
+    case "string":
+      return "str";
+    case "bigint":
+      return "int";
+    case "number":
+      return Number.isInteger(value) ? "int" : "float";
+    case "boolean":
+      return "bool";
+    case "undefined":
+      return "NoneType";
+  }
+  if (value === null) {
+    return "NoneType";
+  }
+  if (value instanceof Uint8Array) {
+    return "bytes";
+  }
+  if (Array.isArray(value)) {
+    return "tuple";
+  }
+  return (value as object).constructor?.name ?? "object";
+}
+
+const FORMAT_SPEC_RE =
+  /^(?:([\s\S])?([<>=^]))?([-+ ])?(z)?(#)?(0)?(\d+)?([_,])?(?:\.(\d+))?([a-zA-Z%])?$/u;
+
+/**
+ * Equivalent of Python's format(str, spec) for string presentation types.
+ * @param value The string to format.
+ * @param spec A Python format specification, e.g. ">20s".
+ * @throws {ValueError} If the specification is not valid for strings.
+ */
+export function formatString(value: string, spec: string): string {
+  const m = FORMAT_SPEC_RE.exec(spec);
+  if (m === null) {
+    throw new ValueError(
+      `Invalid format specifier ${pyRepr(spec)} for object of type 'str'`
+    );
+  }
+  const [, fillChar, alignChar, sign, z, alternate, zero, width, grouping] = m;
+  const [precision, type] = [m[9], m[10]];
+  if (type !== undefined && type !== "s") {
+    throw new ValueError(
+      `Unknown format code '${type}' for object of type 'str'`
+    );
+  }
+  if (sign !== undefined) {
+    throw new ValueError("Sign not allowed in string format specifier");
+  }
+  if (z !== undefined) {
+    throw new ValueError(
+      "Negative zero coercion (z) not allowed in string format specifier"
+    );
+  }
+  if (alternate !== undefined) {
+    throw new ValueError(
+      "Alternate form (#) not allowed in string format specifier"
+    );
+  }
+  if (grouping !== undefined) {
+    throw new ValueError(`Cannot specify '${grouping}' with 's'.`);
+  }
+  if (alignChar === "=") {
+    throw new ValueError(
+      "'=' alignment not allowed in string format specifier"
+    );
+  }
+  let fill = fillChar ?? " ";
+  if (zero !== undefined && fillChar === undefined) {
+    fill = "0";
+  }
+  const align = alignChar ?? "<";
+
+  let chars = [...value];
+  if (precision !== undefined) {
+    chars = chars.slice(0, parseInt(precision, 10));
+  }
+  const padding = Math.max(0, (width ? parseInt(width, 10) : 0) - chars.length);
+  let left = 0;
+  if (align === ">") {
+    left = padding;
+  } else if (align === "^") {
+    left = Math.floor(padding / 2);
+  }
+  return fill.repeat(left) + chars.join("") + fill.repeat(padding - left);
 }
