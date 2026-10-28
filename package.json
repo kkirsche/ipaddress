@@ -1,6 +1,6 @@
 {
   "name": "@ipaddress/core",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "A TypeScript port of Python's ipaddress module: create, inspect and manipulate IPv4 and IPv6 addresses, interfaces and networks",
   "keywords": [
     "ip address",
