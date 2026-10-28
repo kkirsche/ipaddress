@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Breaking changes
+
+- Requires Node.js 22 or newer. Node.js 20 reached end-of-life on
+  2026-04-30.
+
 ## 2.0.0
 
 A rewrite that matches the public API and behavior of Python 3.15's

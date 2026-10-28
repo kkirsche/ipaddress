@@ -7,7 +7,7 @@ A TypeScript port of the Python [`ipaddress`](https://docs.python.org/3/library/
 
 The port follows CPython's [`Lib/ipaddress.py`](https://github.com/python/cpython/blob/main/Lib/ipaddress.py)
 and is verified against the behavior of Python 3.15 (see [Compatibility testing](#compatibility-testing)).
-It has no dependencies and works with both `import` and `require` in Node.js 20+
+It has no dependencies and works with both `import` and `require` in Node.js 22+
 and bundlers.
 
 ## Installation
