@@ -48,14 +48,14 @@
   },
   "scripts": {
     "clean": "node -e \"require('fs').rmSync('build', { recursive: true, force: true })\"",
-    "build": "yarn clean && tsc -p tsconfig.build.json",
+    "build": "pnpm clean && tsc -p tsconfig.build.json",
     "fixtures": "python3 scripts/generate_fixtures.py src/__fixtures__/python-ipaddress.json && python3 scripts/record_cpython_tests.py src/__fixtures__/cpython-test-suite.json",
     "format": "prettier -w src",
     "lint": "eslint --max-warnings=0 .",
     "test": "jest",
     "typecheck": "tsc --noEmit",
-    "prepack": "yarn build",
-    "prepublishOnly": "yarn typecheck && yarn lint && yarn test"
+    "prepack": "pnpm build",
+    "prepublishOnly": "pnpm typecheck && pnpm lint && pnpm test"
   },
   "license": "MIT",
   "devDependencies": {
@@ -97,5 +97,5 @@
     "useTabs": false,
     "vueIndentScriptAndStyle": false
   },
-  "packageManager": "yarn@3.6.0"
+  "packageManager": "pnpm@12.16.1"
 }

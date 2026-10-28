@@ -106,11 +106,11 @@ Version 2 is a single package: uninstall the others and import everything from
 ## Development
 
 ```sh
-yarn install
-yarn test       # run the test suite
-yarn typecheck  # type check the sources and tests
-yarn lint
-yarn build      # compile to build/
+pnpm install
+pnpm test       # run the test suite
+pnpm typecheck  # type check the sources and tests
+pnpm lint
+pnpm build      # compile to build/
 ```
 
 ### Compatibility testing
@@ -135,7 +135,7 @@ The recorded fixtures are committed, so the tests don't need Python. To
 regenerate them, e.g. for a new Python version:
 
 ```sh
-yarn fixtures  # needs python3 with its test suite (Lib/test) installed
+pnpm fixtures  # needs python3 with its test suite (Lib/test) installed
 ```
 
 ### Releasing

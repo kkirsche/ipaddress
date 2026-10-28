@@ -20,8 +20,8 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
-      - run: corepack enable
-      - run: yarn install --immutable
+      - uses: pnpm/action-setup@v6
+      - run: pnpm install --frozen-lockfile
       - name: Check the release tag matches package.json
         run: |
           version="$(node -p "require('./package.json').version")"
