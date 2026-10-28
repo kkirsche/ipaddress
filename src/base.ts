@@ -1060,6 +1060,10 @@ export abstract class _BaseNetwork<
         `current prefixlen is ${this.prefixlen}, cannot have a prefixlen_diff of ${prefixlenDiff}`
       );
     }
+    // Python's << raises for negative counts; a BigInt shift would not.
+    if (prefixlenDiff < 0) {
+      throw new ValueError("negative shift count");
+    }
     return this._new([
       this.networkAddress._ip & (this.netmask._ip << BigInt(prefixlenDiff)),
       newPrefixlen,

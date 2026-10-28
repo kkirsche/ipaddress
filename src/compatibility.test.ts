@@ -1,7 +1,10 @@
 /**
- * Replays the behavior of CPython's ipaddress module, recorded by
- * scripts/generate_fixtures.py, against this library. Every result, including
- * the type and message of every error, must be identical.
+ * Replays the behavior of CPython's ipaddress module against this library.
+ * Every result, including the type and message of every error, must be
+ * identical. Two sets of fixtures are replayed:
+ * - scripts/generate_fixtures.py: operations on a broad set of inputs
+ * - scripts/record_cpython_tests.py: every operation performed by CPython's
+ *   own test suite, Lib/test/test_ipaddress.py
  */
 import * as ipaddress from "./index";
 import {
@@ -18,6 +21,7 @@ import {
 } from "./index";
 import { _IPAddressBase } from "./base";
 import rawFixtures from "./__fixtures__/python-ipaddress.json";
+import rawCPythonTests from "./__fixtures__/cpython-test-suite.json";
 
 type Encoded =
   | string
@@ -25,6 +29,8 @@ type Encoded =
   | null
   | Encoded[]
   | { int: string }
+  | { float: string }
+  | { foreign: string }
   | { bytes: string }
   | { tuple: Encoded[] }
   | { obj: Spec };
@@ -47,7 +53,24 @@ interface Fixtures {
   functions: { fn: string; args: Encoded[]; result: Captured }[];
 }
 
+interface CPythonTestRecord {
+  kind: "ctor" | "func" | "prop" | "method" | "op";
+  test: string;
+  cls?: keyof typeof CLASSES;
+  name?: string;
+  op?: string;
+  recv?: Spec;
+  args?: Encoded[];
+  kwargs?: { strict?: boolean; prefixlen_diff?: number; new_prefix?: number };
+  result: Captured;
+}
+
 const fixtures = rawFixtures as unknown as Fixtures;
+const cpythonTests = rawCPythonTests as unknown as {
+  python_version: string;
+  tests_run: number;
+  records: CPythonTestRecord[];
+};
 
 const CLASSES = {
   IPv4Address,
@@ -72,6 +95,13 @@ function decode(value: Encoded): unknown {
       n <= BigInt(Number.MAX_SAFE_INTEGER)
       ? Number(n)
       : n;
+  }
+  if ("float" in value) {
+    return Number(value.float);
+  }
+  if ("foreign" in value) {
+    // A plain Python object() with no IP semantics.
+    return {};
   }
   if ("bytes" in value) {
     return Uint8Array.from(value.bytes.match(/../g) ?? [], (byte) =>
@@ -230,11 +260,82 @@ const FUNCTIONS: Record<string, (...args: AnyIP[]) => unknown> = {
   v6_int_to_packed: (address) => ipaddress.v6IntToPacked(address),
   summarize_address_range: (first, last) =>
     take(ipaddress.summarizeAddressRange(first, last), 300),
-  collapse_addresses: (addresses) => [
-    ...ipaddress.collapseAddresses(addresses),
-  ],
+  collapse_addresses: (addresses) =>
+    take(ipaddress.collapseAddresses(addresses), 300),
   get_mixed_type_key: (obj) => ipaddress.getMixedTypeKey(obj),
 };
+
+// The number of items CPython's test suite recorder takes from iterators.
+const RECORDED_ITEMS = 300;
+const GENERATOR_METHODS = new Set(["hosts", "subnets", "address_exclude"]);
+
+/** Perform one operation recorded from CPython's test suite. */
+function replay(r: CPythonTestRecord): unknown {
+  const args = (r.args ?? []).map(decode) as AnyIP[];
+  const kwargs = r.kwargs ?? {};
+  switch (r.kind) {
+    case "ctor": {
+      const Cls = CLASSES[r.cls as keyof typeof CLASSES] as AnyIP;
+      return "strict" in kwargs
+        ? new Cls(...args, kwargs.strict)
+        : new Cls(...args);
+    }
+    case "func": {
+      if (r.name === "ip_network" && "strict" in kwargs) {
+        return ipaddress.ipNetwork(args[0], kwargs.strict);
+      }
+      return FUNCTIONS[r.name as string](...args);
+    }
+    case "prop":
+      return (construct(r.recv as Spec) as AnyIP)[camel(r.name as string)];
+    case "method": {
+      const recv = construct(r.recv as Spec) as AnyIP;
+      const name = r.name as string;
+      const result =
+        Object.keys(kwargs).length > 0
+          ? recv[camel(name)]({
+              prefixlenDiff: kwargs.prefixlen_diff ?? args[0],
+              newPrefix: kwargs.new_prefix,
+            })
+          : recv[camel(name)](...args);
+      return GENERATOR_METHODS.has(name)
+        ? take(result, RECORDED_ITEMS)
+        : result;
+    }
+    case "op": {
+      const recv = construct(r.recv as Spec) as AnyIP;
+      const [other] = args;
+      switch (r.op) {
+        case "in":
+          return recv.contains(other);
+        case "getitem":
+          return recv.getItem(other);
+        case "iter":
+          return take(recv, RECORDED_ITEMS);
+        case "+":
+          return recv.add(other);
+        case "-":
+          return recv.sub(other);
+        case "int":
+          return recv.toNumber();
+        case "str":
+          return recv.toString();
+        case "repr":
+          return recv.toRepr();
+        case "format":
+          return recv.format(other);
+        default:
+          return COMPARE[r.op as string](recv, other);
+      }
+    }
+  }
+}
+
+function describeRecord(r: CPythonTestRecord): string {
+  const what = r.kind === "op" ? `${r.op}` : r.kind === "ctor" ? r.cls : r.name;
+  const on = r.recv ? `${describeSpec(r.recv)} ` : "";
+  return `${r.test}: ${on}${what}(${JSON.stringify(r.args ?? [])})`;
+}
 
 function describeSpec(spec: Spec): string {
   return `${spec.cls}(${spec.args.map((a) => JSON.stringify(a)).join(", ")})`;
@@ -393,5 +494,19 @@ describe(`compatibility with Python ${fixtures.python_version} ipaddress`, () =>
       const args = f.args.map(decode);
       expect(capture(() => FUNCTIONS[fn](...args))).toEqual(expected(f.result));
     });
+  });
+
+  describe(`CPython ${cpythonTests.python_version} test suite (Lib/test/test_ipaddress.py)`, () => {
+    it("recorded the whole suite", () => {
+      expect(cpythonTests.tests_run).toBeGreaterThan(200);
+      expect(cpythonTests.records.length).toBeGreaterThan(5000);
+    });
+
+    it.each(cpythonTests.records.map((r) => [describeRecord(r), r] as const))(
+      "%s",
+      (_, r) => {
+        expect(capture(() => replay(r))).toEqual(expected(r.result));
+      }
+    );
   });
 });

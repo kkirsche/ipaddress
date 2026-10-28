@@ -49,7 +49,7 @@
   "scripts": {
     "clean": "node -e \"require('fs').rmSync('build', { recursive: true, force: true })\"",
     "build": "yarn clean && tsc -p tsconfig.build.json",
-    "fixtures": "python3 scripts/generate_fixtures.py > src/__fixtures__/python-ipaddress.json",
+    "fixtures": "python3 scripts/generate_fixtures.py src/__fixtures__/python-ipaddress.json && python3 scripts/record_cpython_tests.py src/__fixtures__/cpython-test-suite.json",
     "format": "prettier -w src",
     "lint": "eslint src",
     "test": "jest",

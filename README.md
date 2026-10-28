@@ -115,19 +115,27 @@ yarn build      # compile to build/
 
 ### Compatibility testing
 
-`scripts/generate_fixtures.py` runs thousands of operations through CPython's
-`ipaddress` module: constructors with valid and invalid input, every property,
-formatting, arithmetic, comparisons between every pair of object kinds, network
-methods and the module functions. It records each result, or the exception type
-and message, in `src/__fixtures__/python-ipaddress.json`.
-`src/compatibility.test.ts` replays every case against this library and
-requires identical results. It also checks that every public name in Python's
-module and classes has an equivalent here.
+`src/compatibility.test.ts` replays two sets of operations recorded from
+CPython's `ipaddress` module against this library. Every result, including the
+type and message of every exception, must be identical.
 
-To regenerate the fixtures with a different Python version:
+- `scripts/generate_fixtures.py` runs thousands of operations through CPython:
+  constructors with valid and invalid input, every property, formatting,
+  arithmetic, comparisons between every pair of object kinds, network methods
+  and the module functions. It also records the public names of Python's
+  module and classes, and the tests check each has an equivalent here.
+- `scripts/record_cpython_tests.py` runs CPython's own test suite,
+  [`Lib/test/test_ipaddress.py`](https://github.com/python/cpython/blob/main/Lib/test/test_ipaddress.py),
+  unmodified with the module instrumented, and records every operation the
+  suite performs along with CPython's result. Operations that rely on
+  Python-only features (pickle, copy, weakref, hashing, `operator.index`) have
+  no JavaScript equivalent and are skipped.
+
+The recorded fixtures are committed, so the tests don't need Python. To
+regenerate them, e.g. for a new Python version:
 
 ```sh
-yarn fixtures  # runs python3 scripts/generate_fixtures.py
+yarn fixtures  # needs python3 with its test suite (Lib/test) installed
 ```
 
 ### Releasing

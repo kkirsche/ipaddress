@@ -312,69 +312,279 @@ export function typeName(value: unknown): string {
   if (Array.isArray(value)) {
     return "tuple";
   }
+  // A plain object has no more specific Python equivalent than object.
+  const proto = Object.getPrototypeOf(value);
+  if (proto === Object.prototype || proto === null) {
+    return "object";
+  }
   return (value as object).constructor?.name ?? "object";
 }
 
-const FORMAT_SPEC_RE =
-  /^(?:([\s\S])?([<>=^]))?([-+ ])?(z)?(#)?(0)?(\d+)?([_,])?(?:\.(\d+))?([a-zA-Z%])?$/u;
+const ALIGNMENT_TOKENS = new Set(["<", ">", "=", "^"]);
+const SIGN_ELEMENTS = new Set([" ", "+", "-"]);
+const DECIMAL_DIGIT = /^\p{Nd}$/u;
+// The largest width or precision CPython accepts (PY_SSIZE_T_MAX).
+const PY_SSIZE_T_MAX = 2n ** 63n - 1n;
 
 /**
- * Equivalent of Python's format(str, spec) for string presentation types.
+ * The value of a Unicode decimal digit, or -1, like Py_UNICODE_TODECIMAL.
+ * Unicode decimal digits are encoded in contiguous runs of 0 to 9.
+ */
+function decimalValue(ch: string): number {
+  if (!DECIMAL_DIGIT.test(ch)) {
+    return -1;
+  }
+  const cp = ch.codePointAt(0) as number;
+  let start = cp;
+  while (DECIMAL_DIGIT.test(String.fromCodePoint(start - 1))) {
+    start--;
+  }
+  return (cp - start) % 10;
+}
+
+/** A character for an error message, like CPython's '%c' / '\\x%x'. */
+function formatCode(ch: string): string {
+  const cp = ch.codePointAt(0) as number;
+  return cp > 32 && cp < 128 ? ch : `\\x${cp.toString(16)}`;
+}
+
+interface FormatSpec {
+  fill: string;
+  align: string;
+  sign: string;
+  noNeg0: boolean;
+  alternate: boolean;
+  width: bigint;
+  thousandsSeparator: string;
+  fracThousandsSeparator: string;
+  precision: bigint;
+  type: string;
+}
+
+/**
+ * A port of CPython's parse_internal_render_format_spec, so that invalid
+ * specifications raise the same error as in Python.
+ */
+function parseFormatSpec(
+  spec: string,
+  defaultType: string,
+  defaultAlign: string
+): FormatSpec {
+  const chars = [...spec];
+  const end = chars.length;
+  let pos = 0;
+  const format: FormatSpec = {
+    fill: " ",
+    align: defaultAlign,
+    sign: "",
+    noNeg0: false,
+    alternate: false,
+    width: -1n,
+    thousandsSeparator: "",
+    fracThousandsSeparator: "",
+    precision: -1n,
+    type: defaultType,
+  };
+  let alignSpecified = false;
+  let fillCharSpecified = false;
+
+  const getInteger = (): [bigint, number] => {
+    let accumulator = 0n;
+    let numdigits = 0;
+    for (; pos < end; pos++, numdigits++) {
+      const digitval = decimalValue(chars[pos]);
+      if (digitval < 0) {
+        break;
+      }
+      if (accumulator > (PY_SSIZE_T_MAX - BigInt(digitval)) / 10n) {
+        throw new ValueError("Too many decimal digits in format string");
+      }
+      accumulator = accumulator * 10n + BigInt(digitval);
+    }
+    return [accumulator, numdigits];
+  };
+  const invalidCommaAndUnderscore = () =>
+    new ValueError("Cannot specify both ',' and '_'.");
+
+  // If the second char is an alignment token, then parse the fill char
+  if (end - pos >= 2 && ALIGNMENT_TOKENS.has(chars[pos + 1])) {
+    format.align = chars[pos + 1];
+    format.fill = chars[pos];
+    fillCharSpecified = true;
+    alignSpecified = true;
+    pos += 2;
+  } else if (end - pos >= 1 && ALIGNMENT_TOKENS.has(chars[pos])) {
+    format.align = chars[pos];
+    alignSpecified = true;
+    pos++;
+  }
+
+  // Parse the various sign options
+  if (end - pos >= 1 && SIGN_ELEMENTS.has(chars[pos])) {
+    format.sign = chars[pos];
+    pos++;
+  }
+  // If the next character is z, request coercion of negative 0.
+  if (end - pos >= 1 && chars[pos] === "z") {
+    format.noNeg0 = true;
+    pos++;
+  }
+  // If the next character is #, we're in alternate mode.
+  if (end - pos >= 1 && chars[pos] === "#") {
+    format.alternate = true;
+    pos++;
+  }
+  // The special case for 0-padding (backwards compat)
+  if (!fillCharSpecified && end - pos >= 1 && chars[pos] === "0") {
+    format.fill = "0";
+    if (!alignSpecified && defaultAlign === ">") {
+      format.align = "=";
+    }
+    pos++;
+  }
+
+  const [width, widthDigits] = getInteger();
+  format.width = widthDigits === 0 ? -1n : width;
+
+  // Comma or underscore signifies add thousands separators
+  if (end - pos && chars[pos] === ",") {
+    format.thousandsSeparator = ",";
+    pos++;
+  }
+  if (end - pos && chars[pos] === "_") {
+    if (format.thousandsSeparator !== "") {
+      throw invalidCommaAndUnderscore();
+    }
+    format.thousandsSeparator = "_";
+    pos++;
+  }
+  if (end - pos && chars[pos] === ",") {
+    if (format.thousandsSeparator === "_") {
+      throw invalidCommaAndUnderscore();
+    }
+  }
+
+  // Parse field precision
+  if (end - pos && chars[pos] === ".") {
+    pos++;
+    const [precision, precisionDigits] = getInteger();
+    let consumed = precisionDigits;
+    format.precision = precision;
+    if (end - pos && chars[pos] === ",") {
+      if (consumed === 0) {
+        format.precision = -1n;
+      }
+      format.fracThousandsSeparator = ",";
+      pos++;
+      consumed++;
+    }
+    if (end - pos && chars[pos] === "_") {
+      if (format.fracThousandsSeparator !== "") {
+        throw invalidCommaAndUnderscore();
+      }
+      if (consumed === 0) {
+        format.precision = -1n;
+      }
+      format.fracThousandsSeparator = "_";
+      pos++;
+      consumed++;
+    }
+    if (end - pos && chars[pos] === ",") {
+      if (format.fracThousandsSeparator === "_") {
+        throw invalidCommaAndUnderscore();
+      }
+    }
+    // Not having a precision or underscore/comma after a dot is an error.
+    if (consumed === 0) {
+      throw new ValueError("Format specifier missing precision");
+    }
+  }
+
+  // Finally, parse the type field.
+  if (end - pos > 1) {
+    // More than one char remains, so this is an invalid format specifier.
+    throw new ValueError(
+      `Invalid format specifier '${spec}' for object of type 'str'`
+    );
+  }
+  if (end - pos === 1) {
+    format.type = chars[pos];
+    pos++;
+  }
+
+  if (format.thousandsSeparator) {
+    const allowed =
+      "defgEGF%".includes(format.type) ||
+      ("boxX".includes(format.type) && format.thousandsSeparator === "_");
+    if (!allowed) {
+      throw new ValueError(
+        `Cannot specify '${format.thousandsSeparator}' with '${formatCode(
+          format.type
+        )}'.`
+      );
+    }
+  }
+  return format;
+}
+
+/**
+ * Equivalent of Python's format(str, spec), a port of CPython's
+ * format_string_internal.
  * @param value The string to format.
  * @param spec A Python format specification, e.g. ">20s".
  * @throws {ValueError} If the specification is not valid for strings.
  */
 export function formatString(value: string, spec: string): string {
-  const m = FORMAT_SPEC_RE.exec(spec);
-  if (m === null) {
+  // The special case of zero length format spec is equivalent to str(obj).
+  if (spec === "") {
+    return value;
+  }
+  const format = parseFormatSpec(spec, "s", "<");
+  if (format.type !== "s") {
     throw new ValueError(
-      `Invalid format specifier ${pyRepr(spec)} for object of type 'str'`
+      `Unknown format code '${formatCode(
+        format.type
+      )}' for object of type 'str'`
     );
   }
-  const [, fillChar, alignChar, sign, z, alternate, zero, width, grouping] = m;
-  const [precision, type] = [m[9], m[10]];
-  if (type !== undefined && type !== "s") {
-    throw new ValueError(
-      `Unknown format code '${type}' for object of type 'str'`
-    );
+  // sign is not allowed on strings
+  if (format.sign === " ") {
+    throw new ValueError("Space not allowed in string format specifier");
   }
-  if (sign !== undefined) {
+  if (format.sign !== "") {
     throw new ValueError("Sign not allowed in string format specifier");
   }
-  if (z !== undefined) {
+  // negative 0 coercion is not allowed on strings
+  if (format.noNeg0) {
     throw new ValueError(
       "Negative zero coercion (z) not allowed in string format specifier"
     );
   }
-  if (alternate !== undefined) {
+  // alternate is not allowed on strings
+  if (format.alternate) {
     throw new ValueError(
       "Alternate form (#) not allowed in string format specifier"
     );
   }
-  if (grouping !== undefined) {
-    throw new ValueError(`Cannot specify '${grouping}' with 's'.`);
-  }
-  if (alignChar === "=") {
+  // '=' alignment not allowed on strings
+  if (format.align === "=") {
     throw new ValueError(
       "'=' alignment not allowed in string format specifier"
     );
   }
-  let fill = fillChar ?? " ";
-  if (zero !== undefined && fillChar === undefined) {
-    fill = "0";
-  }
-  const align = alignChar ?? "<";
 
   let chars = [...value];
-  if (precision !== undefined) {
-    chars = chars.slice(0, parseInt(precision, 10));
+  // if precision is specified, output no more than precision characters
+  if (format.precision >= 0n && BigInt(chars.length) >= format.precision) {
+    chars = chars.slice(0, Number(format.precision));
   }
-  const padding = Math.max(0, (width ? parseInt(width, 10) : 0) - chars.length);
+  const total = Math.max(chars.length, Number(format.width));
   let left = 0;
-  if (align === ">") {
-    left = padding;
-  } else if (align === "^") {
-    left = Math.floor(padding / 2);
+  if (format.align === ">") {
+    left = total - chars.length;
+  } else if (format.align === "^") {
+    left = Math.floor((total - chars.length) / 2);
   }
-  return fill.repeat(left) + chars.join("") + fill.repeat(padding - left);
+  const right = total - chars.length - left;
+  return format.fill.repeat(left) + chars.join("") + format.fill.repeat(right);
 }

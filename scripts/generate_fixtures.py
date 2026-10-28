@@ -6,12 +6,16 @@ the generated file against this library and requires identical results,
 including exception types and messages.
 
 Usage:
-    python3 scripts/generate_fixtures.py > src/__fixtures__/python-ipaddress.json
+    python3 scripts/generate_fixtures.py [OUTPUT]
+
+Without OUTPUT the JSON is written to stdout. With OUTPUT it is written
+atomically, so a failed run never leaves a truncated fixture behind.
 """
 
 import ipaddress
 import itertools
 import json
+import os
 import random
 import sys
 
@@ -78,6 +82,18 @@ def capture(fn):
         return {"value": ser(fn())}
     except Exception as exc:  # noqa: BLE001 - recording every failure mode
         return {"error": [type(exc).__name__, str(exc)]}
+
+
+def write_json(data, output=None):
+    """Write data to stdout, or atomically to the output path."""
+    text = json.dumps(data, ensure_ascii=True, separators=(",", ":")) + "\n"
+    if output is None:
+        sys.stdout.write(text)
+        return
+    tmp = f"{output}.tmp"
+    with open(tmp, "w", encoding="ascii") as f:
+        f.write(text)
+    os.replace(tmp, output)
 
 
 def take(iterable, limit=ITER_LIMIT):
@@ -308,6 +324,11 @@ def main():
         "_n", "#_b", "#_x", "#_X", "#_n", "20s", ">20s", "<20s", "^20s",
         "*^21s", "05s", ".3s", "^9.5s", ">50", "10", "d", "o", "c", "#bs",
         "+s", "#s", ",s", "_s", "=10s", "z5s", "%s", "x_", "##x", "b#",
+        # Specs with several problems: CPython reports the first one its
+        # parser reaches (found by differential fuzzing).
+        "#_s", "#0,s", "5.#3s", ".b<s", ",_5s", "_,s", " s", "._s", ".,s",
+        ".3_s", "+#s", "z#s", "=#s", "0=5s", "\u0663s", "x>\u0663s",
+        "99999999999999999999s", "'s", '"s', "\\s", "\u2028s",
     ]
     formats = [
         {"obj": spec(a), "fmt": f, "result": capture(lambda: format(a, f))}
@@ -391,6 +412,8 @@ def main():
         ((), {"new_prefix": 8}), ((), {"new_prefix": 31}),
         ((2,), {"new_prefix": 8}), ((1,), {"new_prefix": 8}),
         ((), {"new_prefix": -1}),
+        # Python raises from int << -1; a BigInt shift would not.
+        ((-1,), {}), ((-5,), {}),
     ]
     method_calls = []
     for net in networks:
@@ -510,7 +533,7 @@ def main():
         },
     }
 
-    json.dump({
+    write_json({
         "python_version": sys.version.split()[0],
         "api": api,
         "constructors": constructors,
@@ -520,8 +543,7 @@ def main():
         "network_ops": network_ops,
         "method_calls": method_calls,
         "functions": functions,
-    }, sys.stdout, ensure_ascii=False, separators=(",", ":"))
-    sys.stdout.write("\n")
+    }, sys.argv[1] if len(sys.argv) > 1 else None)
 
 
 if __name__ == "__main__":
