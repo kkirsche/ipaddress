@@ -1,4 +1,4 @@
-import { ByteOrder } from "./interfaces";
+import type { ByteOrder } from "./interfaces";
 import { AddressValueError, ValueError } from "./errors";
 
 /**
@@ -17,9 +17,6 @@ export function intToBytes(
   length = 1,
   byteorder: ByteOrder = "big"
 ): Uint8Array {
-  if (byteorder !== "big" && byteorder !== "little") {
-    throw new TypeError("byteorder must be either 'little' or 'big'");
-  }
   let value = BigInt(n);
   if (value < 0n) {
     throw new RangeError("can't convert negative int to unsigned");
@@ -46,9 +43,6 @@ export function intFromBytes(
   bytes: Uint8Array,
   byteOrder: ByteOrder = "big"
 ): bigint {
-  if (byteOrder !== "big" && byteOrder !== "little") {
-    throw new TypeError("byteorder must be either 'little' or 'big'");
-  }
   let n = 0n;
   for (let i = 0; i < bytes.length; i++) {
     const byte = bytes[byteOrder === "big" ? i : bytes.length - 1 - i];
@@ -146,11 +140,20 @@ export function _countRighthandZeroBits(number: bigint, bits: number): number {
 }
 
 /**
+ * Split a string into code points, like Python's list(s). A Python str is a
+ * sequence of code points, so this is the unit that len(), indexing and
+ * slicing operate on.
+ */
+export function codePoints(s: string): string[] {
+  return Array.from(s);
+}
+
+/**
  * Equivalent of Python's str.isascii().
  */
 export function strIsAscii(c: string): boolean {
   // from byte 0 to byte 127 is ascii, so we validate that we're only in that range.
-  return [...c].every((ch) => ch.charCodeAt(0) <= 0x7f);
+  return codePoints(c).every((ch) => ch.charCodeAt(0) <= 0x7f);
 }
 
 /**
@@ -183,7 +186,7 @@ export function pySplit(s: string, sep: string, maxsplit: number): string[] {
  * Reverse a string by code point, like Python's s[::-1].
  */
 export function reverseString(s: string): string {
-  return [...s].reverse().join("");
+  return codePoints(s).reverse().join("");
 }
 
 /**
@@ -284,6 +287,7 @@ export function reprValue(value: unknown): string {
   if (typeof withRepr.toRepr === "function") {
     return withRepr.toRepr();
   }
+  // eslint-disable-next-line @typescript-eslint/no-base-to-string -- any other object falls back to its own string conversion
   return String(value);
 }
 
@@ -302,6 +306,8 @@ export function typeName(value: unknown): string {
       return "bool";
     case "undefined":
       return "NoneType";
+    default:
+      break;
   }
   if (value === null) {
     return "NoneType";
@@ -313,11 +319,13 @@ export function typeName(value: unknown): string {
     return "tuple";
   }
   // A plain object has no more specific Python equivalent than object.
-  const proto = Object.getPrototypeOf(value);
+  const proto: unknown = Object.getPrototypeOf(value);
   if (proto === Object.prototype || proto === null) {
     return "object";
   }
-  return (value as object).constructor?.name ?? "object";
+  // An object further down a null-prototype chain may have no constructor.
+  const { constructor } = value as { constructor?: { name: string } };
+  return constructor?.name ?? "object";
 }
 
 const ALIGNMENT_TOKENS = new Set(["<", ">", "=", "^"]);
@@ -370,7 +378,7 @@ function parseFormatSpec(
   defaultType: string,
   defaultAlign: string
 ): FormatSpec {
-  const chars = [...spec];
+  const chars = codePoints(spec);
   const end = chars.length;
   let pos = 0;
   const format: FormatSpec = {
@@ -573,7 +581,7 @@ export function formatString(value: string, spec: string): string {
     );
   }
 
-  let chars = [...value];
+  let chars = codePoints(value);
   // if precision is specified, output no more than precision characters
   if (format.precision >= 0n && BigInt(chars.length) >= format.precision) {
     chars = chars.slice(0, Number(format.precision));

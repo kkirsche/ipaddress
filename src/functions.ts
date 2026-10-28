@@ -1,11 +1,7 @@
-import { AddressInput, NetworkInput } from "./interfaces";
+import type { AddressInput, NetworkInput } from "./interfaces";
 import { AddressValueError, NetmaskValueError, ValueError } from "./errors";
-import {
-  NotImplemented,
-  NotImplementedType,
-  _BaseAddress,
-  _BaseNetwork,
-} from "./base";
+import type { NotImplementedType } from "./base";
+import { NotImplemented, _BaseAddress, _BaseNetwork } from "./base";
 import { IPv4Address, IPv4Interface, IPv4Network } from "./ipv4";
 import { IPv6Address, IPv6Interface, IPv6Network } from "./ipv6";
 import { _countRighthandZeroBits, bitLength, reprValue } from "./utilities";
@@ -143,7 +139,9 @@ export function* summarizeAddressRange(
     throw new TypeError("first and last must be IP addresses, not networks");
   }
   if (first.version !== last.version) {
-    throw new TypeError(`${first} and ${last} are not of the same version`);
+    throw new TypeError(
+      `${first.toString()} and ${last.toString()} are not of the same version`
+    );
   }
   if (first.greaterThan(last)) {
     throw new ValueError("last IP address must be greater than first");
@@ -261,23 +259,26 @@ export function collapseAddresses(
   // split IP addresses and networks
   for (const ip of addresses) {
     if (ip instanceof _BaseAddress) {
-      if (ips.length && ips[ips.length - 1].version !== ip.version) {
+      const last = ips[ips.length - 1];
+      if (ips.length && last.version !== ip.version) {
         throw new TypeError(
-          `${ip} and ${ips[ips.length - 1]} are not of the same version`
+          `${ip.toString()} and ${last.toString()} are not of the same version`
         );
       }
       ips.push(ip);
     } else if (ip._prefixlen === ip.maxPrefixlen) {
-      if (ips.length && ips[ips.length - 1].version !== ip.version) {
+      const last = ips[ips.length - 1];
+      if (ips.length && last.version !== ip.version) {
         throw new TypeError(
-          `${ip} and ${ips[ips.length - 1]} are not of the same version`
+          `${ip.toString()} and ${last.toString()} are not of the same version`
         );
       }
       ips.push(ip.networkAddress);
     } else {
-      if (nets.length && nets[nets.length - 1].version !== ip.version) {
+      const last = nets[nets.length - 1];
+      if (nets.length && last.version !== ip.version) {
         throw new TypeError(
-          `${ip} and ${nets[nets.length - 1]} are not of the same version`
+          `${ip.toString()} and ${last.toString()} are not of the same version`
         );
       }
       nets.push(ip);
@@ -313,12 +314,6 @@ export function collapseAddresses(
  * @returns appropriate key: [version, address] for addresses and
  * [version, networkAddress, netmask] for networks.
  */
-export function getMixedTypeKey(
-  obj: IPAddress | IPNetwork
-): [4 | 6, IPAddress] | [4 | 6, IPAddress, IPAddress] | NotImplementedType;
-export function getMixedTypeKey(
-  obj: unknown
-): [4 | 6, IPAddress] | [4 | 6, IPAddress, IPAddress] | NotImplementedType;
 export function getMixedTypeKey(
   obj: unknown
 ): [4 | 6, IPAddress] | [4 | 6, IPAddress, IPAddress] | NotImplementedType {

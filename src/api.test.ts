@@ -199,7 +199,7 @@ describe("interfaces", () => {
       new IPv4Address("1.1.1.1"),
       new IPv4Interface("1.1.1.0/24"),
     ];
-    items.sort((a, b) => (a.lessThan(b) ? -1 : b.lessThan(a) ? 1 : 0));
+    items.sort((a, b) => Number(b.lessThan(a)) - Number(a.lessThan(b)));
     expect(items.map((i) => i.toRepr())).toStrictEqual([
       "IPv4Address('1.1.1.1')",
       "IPv4Interface('1.1.1.0/24')",
@@ -208,6 +208,7 @@ describe("interfaces", () => {
   });
 
   it("work in template literals", () => {
+    // eslint-disable-next-line @typescript-eslint/restrict-template-expressions -- implicit conversion is what's under test
     expect(`${new IPv4Interface("10.1.2.3/8")}`).toBe("10.1.2.3/8");
   });
 });

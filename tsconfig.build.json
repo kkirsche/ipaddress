@@ -5,6 +5,8 @@
     // The sources aren't published, so maps to them would be broken links.
     "declarationMap": false,
     // Keep implementation details marked @internal out of the published types.
-    "stripInternal": true
+    "stripInternal": true,
+    // The library itself depends on neither the test runner nor Node.
+    "types": []
   }
 }

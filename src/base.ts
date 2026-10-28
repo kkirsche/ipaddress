@@ -1,4 +1,4 @@
-import {
+import type {
   AddressInput,
   NetmaskInput,
   NetworkInput,
@@ -515,7 +515,9 @@ export abstract class _BaseAddress extends _IPAddressBase {
       return NotImplemented;
     }
     if (this.version !== other.version) {
-      throw new TypeError(`${this} and ${other} are not of the same version`);
+      throw new TypeError(
+        `${this.toString()} and ${other.toString()} are not of the same version`
+      );
     }
     return this._ip < other._ip;
   }
@@ -646,7 +648,7 @@ export abstract class _BaseNetwork<
     const packed = this.networkAddress._ip;
     if ((packed & this.netmask._ip) !== packed) {
       if (strict) {
-        throw new ValueError(`${this} has host bits set`);
+        throw new ValueError(`${this.toString()} has host bits set`);
       } else {
         this.networkAddress = this._addressClass(packed & this.netmask._ip);
       }
@@ -680,7 +682,7 @@ export abstract class _BaseNetwork<
   }
 
   toString(): string {
-    return `${this.networkAddress}/${this.prefixlen}`;
+    return `${this.networkAddress.toString()}/${this.prefixlen}`;
   }
 
   /**
@@ -744,11 +746,13 @@ export abstract class _BaseNetwork<
 
   /** @internal */
   _lt(other: unknown): boolean | NotImplementedType {
-    if (!(other instanceof _BaseNetwork)) {
+    if (!_isNetwork(other)) {
       return NotImplemented;
     }
     if (this.version !== other.version) {
-      throw new TypeError(`${this} and ${other} are not of the same version`);
+      throw new TypeError(
+        `${this.toString()} and ${other.toString()} are not of the same version`
+      );
     }
     if (!this.networkAddress.equals(other.networkAddress)) {
       return this.networkAddress.lessThan(other.networkAddress);
@@ -767,7 +771,7 @@ export abstract class _BaseNetwork<
     if (this.version !== other.version) {
       return false;
     }
-    if (!(other instanceof _BaseNetwork)) {
+    if (!_isNetwork(other)) {
       return NotImplemented;
     }
     return (
@@ -813,33 +817,29 @@ export abstract class _BaseNetwork<
   }
 
   get broadcastAddress(): A {
-    if (this._cachedBroadcastAddress === undefined) {
-      this._cachedBroadcastAddress = this._addressClass(
-        this.networkAddress._ip | this.hostmask._ip
-      );
-    }
+    this._cachedBroadcastAddress ??= this._addressClass(
+      this.networkAddress._ip | this.hostmask._ip
+    );
     return this._cachedBroadcastAddress;
   }
 
   get hostmask(): A {
-    if (this._cachedHostmask === undefined) {
-      this._cachedHostmask = this._addressClass(
-        this.netmask._ip ^ this.networkAddress._info.allOnes
-      );
-    }
+    this._cachedHostmask ??= this._addressClass(
+      this.netmask._ip ^ this.networkAddress._info.allOnes
+    );
     return this._cachedHostmask;
   }
 
   get withPrefixlen(): string {
-    return `${this.networkAddress}/${this._prefixlen}`;
+    return `${this.networkAddress.toString()}/${this._prefixlen}`;
   }
 
   get withNetmask(): string {
-    return `${this.networkAddress}/${this.netmask}`;
+    return `${this.networkAddress.toString()}/${this.netmask.toString()}`;
   }
 
   get withHostmask(): string {
-    return `${this.networkAddress}/${this.hostmask}`;
+    return `${this.networkAddress.toString()}/${this.hostmask.toString()}`;
   }
 
   /** @internal */
@@ -872,20 +872,26 @@ export abstract class _BaseNetwork<
     other: _BaseNetwork<_BaseAddress>
   ): Generator<this, void, undefined> {
     if (this.version !== other.version) {
-      throw new TypeError(`${this} and ${other} are not of the same version`);
+      throw new TypeError(
+        `${this.toString()} and ${other.toString()} are not of the same version`
+      );
     }
     if (!(other instanceof _BaseNetwork)) {
-      throw new TypeError(`${other} is not a network object`);
+      throw new TypeError(`${String(other)} is not a network object`);
     }
     if (!other.subnetOf(this)) {
-      throw new ValueError(`${other} not contained in ${this}`);
+      throw new ValueError(
+        `${other.toString()} not contained in ${this.toString()}`
+      );
     }
     if (other.equals(this)) {
       return;
     }
 
     // Make sure we're comparing the network of other.
-    other = (other as this)._new(`${other.networkAddress}/${other.prefixlen}`);
+    other = (other as this)._new(
+      `${other.networkAddress.toString()}/${other.prefixlen}`
+    );
 
     let [s1, s2] = this.subnets();
     while (!s1.equals(other) && !s2.equals(other)) {
@@ -898,7 +904,7 @@ export abstract class _BaseNetwork<
       } else {
         // If we got here, there's a bug somewhere.
         throw new Error(
-          `Error performing exclusion: s1: ${s1} s2: ${s2} other: ${other}`
+          `Error performing exclusion: s1: ${s1.toString()} s2: ${s2.toString()} other: ${other.toString()}`
         );
       }
     }
@@ -909,7 +915,7 @@ export abstract class _BaseNetwork<
     } else {
       // If we got here, there's a bug somewhere.
       throw new Error(
-        `Error performing exclusion: s1: ${s1} s2: ${s2} other: ${other}`
+        `Error performing exclusion: s1: ${s1.toString()} s2: ${s2.toString()} other: ${other.toString()}`
       );
     }
   }
@@ -928,7 +934,9 @@ export abstract class _BaseNetwork<
   compareNetworks(other: _BaseNetwork<_BaseAddress>): -1 | 0 | 1 {
     // does this need to raise a ValueError?
     if (this.version !== other.version) {
-      throw new TypeError(`${this} and ${other} are not of the same type`);
+      throw new TypeError(
+        `${this.toString()} and ${other.toString()} are not of the same type`
+      );
     }
     if (!(other instanceof _BaseNetwork)) {
       throw new TypeError(
@@ -1006,7 +1014,7 @@ export abstract class _BaseNetwork<
 
     if (newPrefixlen > this.maxPrefixlen) {
       throw new ValueError(
-        `prefix length diff ${newPrefixlen} is invalid for netblock ${this}`
+        `prefix length diff ${newPrefixlen} is invalid for netblock ${this.toString()}`
       );
     }
 
@@ -1082,17 +1090,20 @@ export abstract class _BaseNetwork<
   /** @internal */
   static _isSubnetOf(a: unknown, b: unknown): boolean {
     if (!(a instanceof _IPAddressBase && b instanceof _IPAddressBase)) {
+      const [aStr, bStr] = [String(a), String(b)];
       throw new TypeError(
-        `Unable to test subnet containment between ${a} and ${b}`
+        `Unable to test subnet containment between ${aStr} and ${bStr}`
       );
     }
     // Always false if one is v4 and the other is v6.
     if (a.version !== b.version) {
-      throw new TypeError(`${a} and ${b} are not of the same version`);
-    }
-    if (!(a instanceof _BaseNetwork && b instanceof _BaseNetwork)) {
       throw new TypeError(
-        `Unable to test subnet containment between ${a} and ${b}`
+        `${a.toString()} and ${b.toString()} are not of the same version`
+      );
+    }
+    if (!(_isNetwork(a) && _isNetwork(b))) {
+      throw new TypeError(
+        `Unable to test subnet containment between ${a.toString()} and ${b.toString()}`
       );
     }
     return (
@@ -1181,4 +1192,9 @@ export abstract class _BaseNetwork<
   get isLoopback(): boolean {
     return this.networkAddress.isLoopback && this.broadcastAddress.isLoopback;
   }
+}
+
+/** Narrow a value to a network, whatever its address type. */
+function _isNetwork(value: unknown): value is _BaseNetwork<_BaseAddress> {
+  return value instanceof _BaseNetwork;
 }

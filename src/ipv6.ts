@@ -1,4 +1,4 @@
-import {
+import type {
   AddressInput,
   NetmaskInput,
   NetworkInput,
@@ -6,13 +6,15 @@ import {
 } from "./interfaces";
 import { AddressValueError, ValueError } from "./errors";
 import { IPV6LENGTH, IPV6_ALL_ONES } from "./constants";
-import {
-  NotImplemented,
+import type {
   NotImplementedType,
-  _BaseAddress,
-  _BaseNetwork,
   _NetworkConstants,
   _VersionInfo,
+} from "./base";
+import {
+  NotImplemented,
+  _BaseAddress,
+  _BaseNetwork,
   _checkIntAddress,
   _checkPackedAddress,
   _classifyAddress,
@@ -21,6 +23,7 @@ import {
   _splitAddrPrefix,
 } from "./base";
 import {
+  codePoints,
   hex,
   intFromBytes,
   pyRepr,
@@ -43,7 +46,7 @@ const _HEX_DIGITS = new Set("0123456789ABCDEFabcdef");
  */
 function _parseHextet(hextetStr: string): bigint {
   // Reject non-ASCII digits.
-  if (![...hextetStr].every((c) => _HEX_DIGITS.has(c))) {
+  if (!codePoints(hextetStr).every((c) => _HEX_DIGITS.has(c))) {
     throw new ValueError(`Only hex digits permitted in ${pyRepr(hextetStr)}`);
   }
   // We do the length check second, since the invalid character error
@@ -70,7 +73,7 @@ function _ipIntFromString(ipStr: string): bigint {
   if (!ipStr) {
     throw new AddressValueError("Address cannot be empty");
   }
-  const chars = [...ipStr];
+  const chars = codePoints(ipStr);
   if (chars.length > 45) {
     let shorten = ipStr;
     if (chars.length > 100) {
@@ -374,7 +377,7 @@ function _explodeShorthandIpString(
  */
 function _reversePointer(self: IPv6Address | IPv6Network): string {
   const reverseChars = reverseString(self.exploded).replace(/:/g, "");
-  return `${[...reverseChars].join(".")}.ip6.arpa`;
+  return `${codePoints(reverseChars).join(".")}.ip6.arpa`;
 }
 
 /**
@@ -451,7 +454,7 @@ export class IPv6Address extends _BaseAddress {
     }
     const prefixLen = 30;
     const rawExplodedStr = _explodeShorthandIpString(this);
-    return `${rawExplodedStr.slice(0, prefixLen)}${ipv4Mapped}`;
+    return `${rawExplodedStr.slice(0, prefixLen)}${ipv4Mapped.toString()}`;
   }
 
   /** @internal */
@@ -467,7 +470,7 @@ export class IPv6Address extends _BaseAddress {
     const reverseChars = reverseString(
       `${rawExplodedStr}${hex(ipv4Int, 8)}`
     ).replace(/:/g, "");
-    return `${[...reverseChars].join(".")}.ip6.arpa`;
+    return `${codePoints(reverseChars).join(".")}.ip6.arpa`;
   }
 
   /**
@@ -483,11 +486,11 @@ export class IPv6Address extends _BaseAddress {
     const ipv4Mapped = this.ipv4Mapped;
     if (ipv4Mapped === null) {
       throw new AddressValueError(
-        `Can not apply to non-IPv4-mapped IPv6 address ${this}`
+        `Can not apply to non-IPv4-mapped IPv6 address ${this.toString()}`
       );
     }
     const highOrderBits = this._ip >> 32n;
-    return `${_stringFromIpInt(highOrderBits)}:${ipv4Mapped}`;
+    return `${_stringFromIpInt(highOrderBits)}:${ipv4Mapped.toString()}`;
   }
 
   toString(): string {
@@ -698,9 +701,7 @@ export class IPv6Interface extends IPv6Address {
   }
 
   get hostmask(): IPv6Address {
-    if (this._cachedHostmask === undefined) {
-      this._cachedHostmask = this.network.hostmask;
-    }
+    this._cachedHostmask ??= this.network.hostmask;
     return this._cachedHostmask;
   }
 
@@ -748,11 +749,11 @@ export class IPv6Interface extends IPv6Address {
   }
 
   get withNetmask(): string {
-    return `${_stringFromIpInt(this._ip)}/${this.netmask}`;
+    return `${_stringFromIpInt(this._ip)}/${this.netmask.toString()}`;
   }
 
   get withHostmask(): string {
-    return `${_stringFromIpInt(this._ip)}/${this.hostmask}`;
+    return `${_stringFromIpInt(this._ip)}/${this.hostmask.toString()}`;
   }
 
   get isUnspecified(): boolean {
@@ -884,54 +885,52 @@ let _constants: _IPv6ConstantsT | undefined;
 // The constants are built lazily, rather than when this module is loaded, so
 // that the circular imports between the IPv4 and IPv6 modules are safe.
 function _IPv6Constants(): _IPv6ConstantsT {
-  if (_constants === undefined) {
-    _constants = {
-      linklocalNetwork: new IPv6Network("fe80::/10"),
-      multicastNetwork: new IPv6Network("ff00::/8"),
-      // Not globally reachable address blocks listed on
-      // https://www.iana.org/assignments/iana-ipv6-special-registry/iana-ipv6-special-registry.xhtml
-      privateNetworks: [
-        new IPv6Network("::1/128"),
-        new IPv6Network("::/128"),
-        new IPv6Network("::ffff:0:0/96"),
-        new IPv6Network("64:ff9b:1::/48"),
-        new IPv6Network("100::/64"),
-        new IPv6Network("2001::/23"),
-        new IPv6Network("2001:db8::/32"),
-        // IANA says N/A, let's consider it not globally reachable to be safe
-        new IPv6Network("2002::/16"),
-        // RFC 9637: https://www.rfc-editor.org/rfc/rfc9637.html#section-6-2.2
-        new IPv6Network("3fff::/20"),
-        new IPv6Network("fc00::/7"),
-        new IPv6Network("fe80::/10"),
-      ],
-      privateNetworksExceptions: [
-        new IPv6Network("2001:1::1/128"),
-        new IPv6Network("2001:1::2/128"),
-        new IPv6Network("2001:3::/32"),
-        new IPv6Network("2001:4:112::/48"),
-        new IPv6Network("2001:20::/28"),
-        new IPv6Network("2001:30::/28"),
-      ],
-      reservedNetworks: [
-        new IPv6Network("::/8"),
-        new IPv6Network("100::/8"),
-        new IPv6Network("200::/7"),
-        new IPv6Network("400::/6"),
-        new IPv6Network("800::/5"),
-        new IPv6Network("1000::/4"),
-        new IPv6Network("4000::/3"),
-        new IPv6Network("6000::/3"),
-        new IPv6Network("8000::/3"),
-        new IPv6Network("A000::/3"),
-        new IPv6Network("C000::/3"),
-        new IPv6Network("E000::/4"),
-        new IPv6Network("F000::/5"),
-        new IPv6Network("F800::/6"),
-        new IPv6Network("FE00::/9"),
-      ],
-      sitelocalNetwork: new IPv6Network("fec0::/10"),
-    };
-  }
+  _constants ??= {
+    linklocalNetwork: new IPv6Network("fe80::/10"),
+    multicastNetwork: new IPv6Network("ff00::/8"),
+    // Not globally reachable address blocks listed on
+    // https://www.iana.org/assignments/iana-ipv6-special-registry/iana-ipv6-special-registry.xhtml
+    privateNetworks: [
+      new IPv6Network("::1/128"),
+      new IPv6Network("::/128"),
+      new IPv6Network("::ffff:0:0/96"),
+      new IPv6Network("64:ff9b:1::/48"),
+      new IPv6Network("100::/64"),
+      new IPv6Network("2001::/23"),
+      new IPv6Network("2001:db8::/32"),
+      // IANA says N/A, let's consider it not globally reachable to be safe
+      new IPv6Network("2002::/16"),
+      // RFC 9637: https://www.rfc-editor.org/rfc/rfc9637.html#section-6-2.2
+      new IPv6Network("3fff::/20"),
+      new IPv6Network("fc00::/7"),
+      new IPv6Network("fe80::/10"),
+    ],
+    privateNetworksExceptions: [
+      new IPv6Network("2001:1::1/128"),
+      new IPv6Network("2001:1::2/128"),
+      new IPv6Network("2001:3::/32"),
+      new IPv6Network("2001:4:112::/48"),
+      new IPv6Network("2001:20::/28"),
+      new IPv6Network("2001:30::/28"),
+    ],
+    reservedNetworks: [
+      new IPv6Network("::/8"),
+      new IPv6Network("100::/8"),
+      new IPv6Network("200::/7"),
+      new IPv6Network("400::/6"),
+      new IPv6Network("800::/5"),
+      new IPv6Network("1000::/4"),
+      new IPv6Network("4000::/3"),
+      new IPv6Network("6000::/3"),
+      new IPv6Network("8000::/3"),
+      new IPv6Network("A000::/3"),
+      new IPv6Network("C000::/3"),
+      new IPv6Network("E000::/4"),
+      new IPv6Network("F000::/5"),
+      new IPv6Network("F800::/6"),
+      new IPv6Network("FE00::/9"),
+    ],
+    sitelocalNetwork: new IPv6Network("fec0::/10"),
+  };
   return _constants;
 }

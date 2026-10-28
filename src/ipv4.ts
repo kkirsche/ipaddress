@@ -1,4 +1,4 @@
-import {
+import type {
   AddressInput,
   NetmaskInput,
   NetworkInput,
@@ -6,13 +6,15 @@ import {
 } from "./interfaces";
 import { AddressValueError, NetmaskValueError, ValueError } from "./errors";
 import { IPV4LENGTH, IPV4_ALL_ONES } from "./constants";
-import {
-  NotImplemented,
+import type {
   NotImplementedType,
-  _BaseAddress,
-  _BaseNetwork,
   _NetworkConstants,
   _VersionInfo,
+} from "./base";
+import {
+  NotImplemented,
+  _BaseAddress,
+  _BaseNetwork,
   _checkIntAddress,
   _checkPackedAddress,
   _classifyAddress,
@@ -57,7 +59,7 @@ function _parseOctet(octetStr: string): number {
   }
   // Handle leading zeros as strict as glibc's inet_pton()
   // See security bug bpo-36384
-  if (octetStr !== "0" && octetStr[0] === "0") {
+  if (octetStr !== "0" && octetStr.startsWith("0")) {
     throw new ValueError(
       `Leading zeros are not permitted in ${pyRepr(octetStr)}`
     );
@@ -308,7 +310,7 @@ export class IPv4Address extends _BaseAddress {
    * @returns {IPv6Address} The IPv4-mapped IPv6 address per RFC 4291.
    */
   get ipv6Mapped(): IPv6Address {
-    return new IPv6Address(`::ffff:${this}`);
+    return new IPv6Address(`::ffff:${this.toString()}`);
   }
 }
 
@@ -331,9 +333,7 @@ export class IPv4Interface extends IPv4Address {
   }
 
   get hostmask(): IPv4Address {
-    if (this._cachedHostmask === undefined) {
-      this._cachedHostmask = this.network.hostmask;
-    }
+    this._cachedHostmask ??= this.network.hostmask;
     return this._cachedHostmask;
   }
 
@@ -379,11 +379,11 @@ export class IPv4Interface extends IPv4Address {
   }
 
   get withNetmask(): string {
-    return `${_stringFromIpInt(this._ip)}/${this.netmask}`;
+    return `${_stringFromIpInt(this._ip)}/${this.netmask.toString()}`;
   }
 
   get withHostmask(): string {
-    return `${_stringFromIpInt(this._ip)}/${this.hostmask}`;
+    return `${_stringFromIpInt(this._ip)}/${this.hostmask.toString()}`;
   }
 
   get isUnspecified(): boolean {
@@ -510,37 +510,35 @@ let _constants: _IPv4ConstantsT | undefined;
 // The constants are built lazily, rather than when this module is loaded, so
 // that the circular imports between the IPv4 and IPv6 modules are safe.
 function _IPv4Constants(): _IPv4ConstantsT {
-  if (_constants === undefined) {
-    _constants = {
-      linklocalNetwork: new IPv4Network("169.254.0.0/16"),
-      loopbackNetwork: new IPv4Network("127.0.0.0/8"),
-      multicastNetwork: new IPv4Network("224.0.0.0/4"),
-      publicNetwork: new IPv4Network("100.64.0.0/10"),
-      // Not globally reachable address blocks listed on
-      // https://www.iana.org/assignments/iana-ipv4-special-registry/iana-ipv4-special-registry.xhtml
-      privateNetworks: [
-        new IPv4Network("0.0.0.0/8"),
-        new IPv4Network("10.0.0.0/8"),
-        new IPv4Network("127.0.0.0/8"),
-        new IPv4Network("169.254.0.0/16"),
-        new IPv4Network("172.16.0.0/12"),
-        new IPv4Network("192.0.0.0/24"),
-        new IPv4Network("192.0.0.170/31"),
-        new IPv4Network("192.0.2.0/24"),
-        new IPv4Network("192.168.0.0/16"),
-        new IPv4Network("198.18.0.0/15"),
-        new IPv4Network("198.51.100.0/24"),
-        new IPv4Network("203.0.113.0/24"),
-        new IPv4Network("240.0.0.0/4"),
-        new IPv4Network("255.255.255.255/32"),
-      ],
-      privateNetworksExceptions: [
-        new IPv4Network("192.0.0.9/32"),
-        new IPv4Network("192.0.0.10/32"),
-      ],
-      reservedNetwork: new IPv4Network("240.0.0.0/4"),
-      unspecifiedAddress: new IPv4Address("0.0.0.0"),
-    };
-  }
+  _constants ??= {
+    linklocalNetwork: new IPv4Network("169.254.0.0/16"),
+    loopbackNetwork: new IPv4Network("127.0.0.0/8"),
+    multicastNetwork: new IPv4Network("224.0.0.0/4"),
+    publicNetwork: new IPv4Network("100.64.0.0/10"),
+    // Not globally reachable address blocks listed on
+    // https://www.iana.org/assignments/iana-ipv4-special-registry/iana-ipv4-special-registry.xhtml
+    privateNetworks: [
+      new IPv4Network("0.0.0.0/8"),
+      new IPv4Network("10.0.0.0/8"),
+      new IPv4Network("127.0.0.0/8"),
+      new IPv4Network("169.254.0.0/16"),
+      new IPv4Network("172.16.0.0/12"),
+      new IPv4Network("192.0.0.0/24"),
+      new IPv4Network("192.0.0.170/31"),
+      new IPv4Network("192.0.2.0/24"),
+      new IPv4Network("192.168.0.0/16"),
+      new IPv4Network("198.18.0.0/15"),
+      new IPv4Network("198.51.100.0/24"),
+      new IPv4Network("203.0.113.0/24"),
+      new IPv4Network("240.0.0.0/4"),
+      new IPv4Network("255.255.255.255/32"),
+    ],
+    privateNetworksExceptions: [
+      new IPv4Network("192.0.0.9/32"),
+      new IPv4Network("192.0.0.10/32"),
+    ],
+    reservedNetwork: new IPv4Network("240.0.0.0/4"),
+    unspecifiedAddress: new IPv4Address("0.0.0.0"),
+  };
   return _constants;
 }

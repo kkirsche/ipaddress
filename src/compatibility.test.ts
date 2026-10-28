@@ -34,9 +34,15 @@ type Encoded =
   | { bytes: string }
   | { tuple: Encoded[] }
   | { obj: Spec };
-type Spec = { cls: keyof typeof CLASSES; args: Encoded[] };
+interface Spec {
+  cls: keyof typeof CLASSES;
+  args: Encoded[];
+}
 type Captured = { value: unknown } | { error: [string, string] };
-type Call = { args: Encoded[]; kwargs: Record<string, number> };
+interface Call {
+  args: Encoded[];
+  kwargs: { new_prefix?: number };
+}
 
 interface Fixtures {
   python_version: string;
@@ -144,7 +150,7 @@ function serialize(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map(serialize);
   }
-  throw new Error(`cannot serialize ${String(value)}`);
+  throw new Error(`cannot serialize ${Object.prototype.toString.call(value)}`);
 }
 
 // Python exceptions without a direct JavaScript equivalent.
@@ -210,7 +216,7 @@ const DUNDERS: Record<string, string | symbol> = {
   __getitem__: "getItem",
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- methods are called by their recorded Python names
 type AnyIP = any;
 
 function getProp(obj: AnyIP, name: string): unknown {
@@ -425,7 +431,7 @@ describe(`compatibility with Python ${fixtures.python_version} ipaddress`, () =>
       fixtures.comparisons.map((c) => {
         const b =
           typeof c.b === "object" && c.b !== null && "cls" in c.b
-            ? describeSpec(c.b as Spec)
+            ? describeSpec(c.b)
             : JSON.stringify(c.b);
         return [describeSpec(c.a), c.op, b, c] as const;
       })
@@ -433,8 +439,8 @@ describe(`compatibility with Python ${fixtures.python_version} ipaddress`, () =>
       const a = construct(c.a);
       const b =
         typeof c.b === "object" && c.b !== null && "cls" in c.b
-          ? construct(c.b as Spec)
-          : decode(c.b as Encoded);
+          ? construct(c.b)
+          : decode(c.b);
       expect(capture(() => COMPARE[op](a, b))).toEqual(expected(c.result));
     });
   });
