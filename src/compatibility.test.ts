@@ -366,8 +366,8 @@ describe(`compatibility with Python ${fixtures.python_version} ipaddress`, () =>
               ? "1.2.3.4"
               : "::1"
             : cls.startsWith("IPv4")
-            ? "1.2.3.0/24"
-            : "::/64",
+              ? "1.2.3.0/24"
+              : "::/64",
         ],
       }) as AnyIP;
       const jsName = DUNDERS[attr] ?? camel(attr);

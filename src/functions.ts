@@ -19,9 +19,9 @@ function _tryEach<T>(
     try {
       return construct();
     } catch (err: unknown) {
-      if (
-        !(err instanceof AddressValueError || err instanceof NetmaskValueError)
-      ) {
+      if (!(
+        err instanceof AddressValueError || err instanceof NetmaskValueError
+      )) {
         throw err;
       }
     }
@@ -172,11 +172,11 @@ export function* summarizeAddressRange(
  */
 function _dedupKey(obj: _BaseAddress): string {
   if (obj instanceof IPv4Interface || obj instanceof IPv6Interface) {
-    const scopeId = obj instanceof IPv6Address ? obj._scopeId ?? "" : "";
+    const scopeId = obj instanceof IPv6Address ? (obj._scopeId ?? "") : "";
     return `I|${obj.version}|${obj._ip}|${scopeId}|${obj.network.networkAddress._ip}|${obj.network._prefixlen}`;
   }
   return `A|${obj.version}|${obj._ip}|${
-    obj instanceof IPv6Address ? obj._scopeId ?? "" : ""
+    obj instanceof IPv6Address ? (obj._scopeId ?? "") : ""
   }`;
 }
 

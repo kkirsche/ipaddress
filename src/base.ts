@@ -631,7 +631,7 @@ function _in(item: _IPAddressBase, container: unknown): boolean {
  * used by networks.
  */
 export abstract class _BaseNetwork<
-  A extends _BaseAddress
+  A extends _BaseAddress,
 > extends _IPAddressBase {
   networkAddress: A;
   netmask: A;

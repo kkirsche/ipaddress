@@ -13,11 +13,7 @@ export type Prefixlen = number;
  * - another IP object, which is converted with its string representation
  */
 export type AddressInput =
-  | string
-  | number
-  | bigint
-  | Uint8Array
-  | _IPAddressBase;
+  string | number | bigint | Uint8Array | _IPAddressBase;
 
 /** A netmask, as a prefix length or a string ("24" or "255.255.255.0"). */
 export type NetmaskInput = string | number | bigint;
@@ -29,9 +25,7 @@ export type NetmaskInput = string | number | bigint;
  * `(address, mask)` tuple form.
  */
 export type NetworkInput =
-  | AddressInput
-  | [AddressInput]
-  | [AddressInput, NetmaskInput];
+  AddressInput | [AddressInput] | [AddressInput, NetmaskInput];
 
 /** Keyword arguments accepted by `subnets` and `supernet`. */
 export interface PrefixOptions {
