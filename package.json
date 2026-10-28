@@ -65,7 +65,7 @@
     "@eslint-community/eslint-plugin-eslint-comments": "^4.8.1",
     "@eslint/js": "^10.0.1",
     "@types/jest": "^30.0.0",
-    "@types/node": "^20",
+    "@types/node": "^24",
     "babel-jest": "^30.5.2",
     "eslint": "^10.13.0",
     "eslint-config-prettier": "^10.1.8",
